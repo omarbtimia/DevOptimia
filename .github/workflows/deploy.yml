@@ -35,7 +35,7 @@ jobs:
           DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
         run: |
           # 1. Crear una nueva versión del código en Apps Script
-          NEW_VERSION=$(clasp version "Auto-deploy $(date +'%Y-%m-%d %H:%M')" | grep -oE '[0-9]+' | head -n 1)
+          NEW_VERSION=$(clasp versions list 2>/dev/null | tail -2 | head -1 | awk '{print $2}')
           echo "Nueva versión creada: $NEW_VERSION"
           
           # 2. Asignar esa nueva versión al DEPLOYMENT_ID existente
