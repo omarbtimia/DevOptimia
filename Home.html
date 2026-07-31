@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --optimia-black: #2D2926; --optimia-red: #A6192E; --optimia-gray: #f8f9fa; }
+        body { background: var(--optimia-gray); font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+        .header-app { background: var(--optimia-black); border-bottom: 4px solid var(--optimia-red); padding: 1rem 0; color: white; }
+        .brand-logo { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        .home-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+        .home-card { background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); padding: 3rem 2.5rem; text-align: center; max-width: 480px; width: 100%; }
+        .home-card h2 { font-weight: 800; font-size: 1.6rem; color: var(--optimia-black); margin-bottom: 0.4rem; }
+        .home-card p { color: #6c757d; margin-bottom: 2.5rem; }
+        .btn-home { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 1rem 1.5rem; border-radius: 10px; font-weight: 700; font-size: 1rem; border: none; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; margin-bottom: 1rem; }
+        .btn-home:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+        .btn-home-open   { background: var(--optimia-red); color: white; }
+        .btn-home-closed { background: var(--optimia-black); color: white; }
+        .btn-home-config { background: white; color: var(--optimia-black); border: 2px solid var(--optimia-black); }
+        .btn-home-icon { font-size: 1.4rem; }
+        #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+<div id="loading"><div class="spinner-border text-danger"></div></div>
+
+<div class="header-app">
+    <div class="container d-flex justify-content-between align-items-center">
+        <span class="brand-logo">Optimia</span>
+        <span id="userLabel" class="text-white-50 small"></span>
+    </div>
+</div>
+
+<div class="home-wrapper">
+    <div class="home-card">
+        <h2>Bienvenido a Optimia</h2>
+        <p>Selecciona el tipo de proyectos que deseas gestionar</p>
+        <button class="btn-home btn-home-open" onclick="goTo('abiertos')">
+            <span class="btn-home-icon">📂</span>
+            <span>Proyectos Abiertos</span>
+        </button>
+        <button id="btnCerrados" class="btn-home btn-home-closed" style="display:none" onclick="goTo('cerrados')">
+            <span class="btn-home-icon">🗄️</span>
+            <span>Proyectos Cerrados</span>
+        </button>
+        <button id="btnConfig" class="btn-home btn-home-config" style="display:none" onclick="goTo('config')">
+            <span class="btn-home-icon">⚙️</span>
+            <span>Configuración</span>
+        </button>
+    </div>
+</div>
+
+<script>
+    window.onload = () => {
+        google.script.run.withSuccessHandler(res => {
+            document.getElementById('userLabel').innerText = res.email || '';
+            if (res.role === 'Líder') {
+                document.getElementById('btnCerrados').style.display = 'flex';
+                document.getElementById('btnConfig').style.display   = 'flex';
+            }
+        }).getAppData();
+    };
+
+    function goTo(vista) {
+        document.getElementById('loading').style.display = 'flex';
+        google.script.run.withSuccessHandler(html => {
+            document.open(); document.write(html); document.close();
+        }).getView(vista);
+    }
+</script>
+</body>
+</html>

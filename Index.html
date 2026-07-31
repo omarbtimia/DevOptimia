@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --optimia-black: #2D2926; --optimia-red: #A6192E; --optimia-gray: #f8f9fa; }
+        body { background: var(--optimia-gray); font-family: 'Inter', sans-serif; overflow-x: hidden; width: 100vw; }
+        .header-app { background: var(--optimia-black); border-bottom: 4px solid var(--optimia-red); padding: 1rem 0; color: white; }
+        .brand-logo { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        .control-panel { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+        .filter-card { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; display: none; margin-bottom: 20px; }
+        .level-1-header { color: #4b69ff; font-size: 1.25rem; font-weight: 700; margin: 2rem 0 0.8rem 0; display: flex; justify-content: space-between; align-items: flex-start; }
+        .level-2-box { background: white; border: 1px solid #dee2e6; border-left: 5px solid #4b69ff; margin-bottom: 8px; width: 100%; }
+        .level-2-box.clickable-report-task { cursor: pointer; transition: background 0.2s ease-in-out; }
+        .level-2-box.clickable-report-task:hover { background: #f1f3f9; border-left-color: #A6192E; }
+        .level-2-title { padding: 12px; font-weight: 600; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .actions-wrap { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+        .level-3-list { padding: 0; list-style: none; margin: 0; background: #fafafa; width: 100%; }
+        .level-3-item { padding: 10px 12px 10px 30px; border-top: 1px solid #f1f1f1; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .badge-opt { font-size: 0.65rem; padding: 4px 8px; border-radius: 4px; font-weight: 800; white-space: nowrap; }
+        .st-done { background: var(--optimia-red); color: white; }
+        .st-process { background: #e9ecef; color: var(--optimia-black); }
+        .st-block { background: var(--optimia-black); color: white; }
+        #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }
+        .select2-container { width: 100% !important; }
+        .select2-container--default .select2-selection--single { height: 31px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 0.875rem; }
+        .select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 29px; color: #212529; }
+        .select2-container--default .select2-selection--single .select2-selection__arrow { height: 29px; }
+        .select2-dropdown { z-index: 9999 !important; font-size: 0.875rem; }
+        .select2-search--dropdown .select2-search__field { font-size: 0.875rem; }
+        .nota-block { background: #fffbea; border: 1px solid #ffe066; border-left: 4px solid #f5a623; border-radius: 0 0 6px 6px; padding: 10px 14px; margin-top: -4px; margin-bottom: 8px; font-size: 0.85rem; }
+        .nota-block p { margin: 0; }
+        .nota-block ul, .nota-block ol { padding-left: 1.2rem; margin: 2px 0; }
+        .nota-block a { color: #0d6efd; }
+        .ck-editor__editable { min-height: 100px !important; max-height: 200px; overflow-y: auto; font-size: 0.875rem; }
+        .ck.ck-toolbar { border-radius: 4px 4px 0 0 !important; flex-wrap: wrap !important; }
+        .ck.ck-toolbar__items { flex-wrap: wrap !important; }
+        .ck.ck-editor__main > .ck-editor__editable { border-radius: 0 0 4px 4px !important; }
+        .ck.ck-button { min-width: 28px !important; padding: 3px 5px !important; font-size: 0.8rem !important; }
+        .ck.ck-icon { width: 16px !important; height: 16px !important; }
+        .ck.ck-balloon-panel { z-index: 99999 !important; }
+        .ck-body-wrapper { z-index: 99999 !important; }
+        #entryModal .modal-dialog { max-width: 560px; }
+        .ck-content-render ul, .ck-content-render ol { padding-left: 1.2rem; margin: 2px 0; }
+        .ck-content-render a { color: #0d6efd; }
+        .ck-content-render p { margin: 0; }
+        .modal-detail-section { border-bottom: 1px solid #f1f1f1; padding-bottom: 12px; margin-bottom: 12px; }
+        .modal-detail-title { font-size: 0.75rem; font-weight: 700; color: #6c757d; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px;}
+        .modal-detail-value { font-size: 0.875rem; color: #212529; }
+        .avance-card-detail { background: #fafafa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+        .badge-atraso { display:inline-flex; align-items:center; gap:3px; font-size:0.62rem; padding:3px 7px; border-radius:4px; font-weight:800; white-space:nowrap; background:#fff3cd; color:#856404; border:1px solid #ffc107; cursor:pointer; transition:background 0.15s; }
+        .badge-atraso:hover { background:#ffe083; }
+        .badge-atraso.bloqueado { background:#f8d7da; color:#842029; border-color:#f5c2c7; cursor:not-allowed; }
+        .hist-atraso-item { background:#fff8ec; border-left:3px solid #f5a623; border-radius:3px; padding:6px 10px; margin-bottom:5px; font-size:0.78rem; }
+        .hist-atraso-fecha { font-size:0.68rem; font-weight:700; color:#888; margin-bottom:2px; }
+    </style>
+</head>
+<body spellcheck="true">
+<div id="loading"><div class="spinner-border text-danger"></div></div>
+<div class="header-app">
+    <div class="container d-flex justify-content-between align-items-center">
+        <span class="brand-logo">Optimia</span>
+        <div class="control-panel">
+            <select id="userSelect" class="form-select form-select-sm" style="width: 130px;"></select>
+            <select id="projSelect" class="form-select form-select-sm" style="width: 130px;"></select>
+            <button class="btn btn-danger btn-sm fw-bold px-3" onclick="loadData()">VER</button>
+            <button class="btn btn-sm fw-bold px-3" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);" onclick="goHome()">← INICIO</button>
+        </div>
+    </div>
+</div>
+
+<div class="container my-3">
+    <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-sm btn-dark px-4 fw-bold" id="btnGest" onclick="changeTab('gestion')">GESTIÓN</button>
+        <button class="btn btn-sm btn-outline-dark px-4 fw-bold" id="btnRepo" onclick="changeTab('reporte')">REPORTE</button>
+        <button id="btnNewTask" class="btn btn-sm btn-outline-primary ms-auto fw-bold" style="display:none" onclick="openModal('Tarea','','')">+ Nueva Tarea</button>
+    </div>
+    <div id="filterSection" class="filter-card">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-5"><label class="small fw-bold">Fecha Inicio</label><input type="date" id="f1" class="form-control form-control-sm"></div>
+            <div class="col-md-5"><label class="small fw-bold">Fecha Fin</label><input type="date" id="f2" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><button class="btn btn-dark btn-sm w-100 fw-bold" onclick="renderUI()">FILTRAR</button></div>
+        </div>
+        <div class="mt-2 text-end">
+            <button class="btn btn-sm btn-dark fw-bold" onclick="abrirModalReporte()">📋 VER REPORTE PARA CORREO</button>
+        </div>
+    </div>
+    <div id="mainUI"></div>
+</div>
+
+<div class="modal fade" id="entryModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body p-4">
+    <h6 class="fw-bold mb-1 border-bottom pb-2" id="fModalTitle">Registro de Actividad</h6>
+    <p class="small text-muted mb-3" id="fModalSubtitle"></p>
+    <input type="hidden" id="fId"><input type="hidden" id="fType"><input type="hidden" id="fParent">
+
+    <div class="mb-2"><label class="small fw-bold">Responsable</label><select id="fOwner" class="form-select form-select-sm"></select></div>
+    <div class="mb-2"><label class="small fw-bold">Proyecto</label><select id="fProj" class="form-select form-select-sm"></select></div>
+    <div class="mb-2">
+        <label class="small fw-bold mb-1">Descripción</label>
+        <textarea id="fDesc"></textarea>
+    </div>
+    <div class="row g-2 mb-2">
+        <div class="col-6">
+            <label class="small fw-bold">Inicio</label>
+            <div id="fInLabel" class="form-control form-control-sm" style="background:#f8f9fa;cursor:not-allowed;">-</div>
+            <input type="hidden" id="fIn">
+        </div>
+        <div class="col-6"><label class="small fw-bold">Fin</label><input type="date" id="fFi" class="form-control form-control-sm"></div>
+    </div>
+    <div class="mb-2"><label class="small fw-bold">Estado</label><select id="fEst" class="form-select form-select-sm" onchange="onEstadoChange()">
+        <option value="En proceso">En proceso</option>
+        <option value="Terminada">Terminada</option>
+        <option value="Bloqueada">Bloqueada</option>
+        <option value="En Pausa">En Pausa</option>
+    </select></div>
+    <div id="fCamposAvance" style="display:none">
+        <div class="mb-2">
+            <label class="small fw-bold">🔗 Evidencia <span class="text-danger" id="fEvidenciaReq">*</span></label>
+            <input id="fEvidencia" class="form-control form-control-sm" placeholder="URL o descripción de la evidencia">
+        </div>
+        <div class="mb-2">
+            <label class="small fw-bold">📦 Entregable <span class="text-danger" id="fEntregableReq">*</span></label>
+            <input id="fEntregable" class="form-control form-control-sm" placeholder="URL o descripción del entregable">
+        </div>
+        <div class="mb-2 d-flex gap-3">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="fSinEntregable" onchange="onSinEntregableChange()">
+                <label class="form-check-label small fw-bold" for="fSinEntregable">Sin Entregable</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="fInterno">
+                <label class="form-check-label small fw-bold" for="fInterno">Interno</label>
+            </div>
+        </div>
+        <div id="fCampoObservaciones" style="display:none" class="mb-2">
+            <label class="small fw-bold">📝 Observaciones <span class="text-danger">*</span></label>
+            <textarea id="fObservaciones" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Justifica por qué no hay entregable..."></textarea>
+        </div>
+    </div>
+
+    <div id="fCampoCategoria" class="mb-2">
+        <label class="small fw-bold">Categoría <span class="text-danger">*</span></label>
+        <select id="fCategoria" class="form-select form-select-sm">
+            <option value="">-- Selecciona una categoría --</option>
+        </select>
+    </div>
+    <div id="fCamposAlerta">
+        <div class="mb-2"><label class="small fw-bold">⚠️ Alerta <span class="text-muted fw-normal">(opcional)</span></label><textarea id="fAlerta" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Describe la alerta si existe..."></textarea></div>
+        <div class="mb-2"><label class="small fw-bold">🔴 Bloqueante <span class="text-muted fw-normal">(opcional)</span></label><textarea id="fBloqueante" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Describe el bloqueante si existe..."></textarea></div>
+    </div>
+    <div id="fCamposSubtareaExtra" style="display:none">
+        <div class="mb-2"><label class="small fw-bold">Jira</label><input id="fJira" class="form-control form-control-sm" placeholder="Ej: PROY-123"></div>
+        <div class="mb-2"><label class="small fw-bold">MSD</label><input id="fMsd" class="form-control form-control-sm" placeholder="Ej: MSD-001"></div>
+        <div class="mb-2"><label class="small fw-bold">Especificacion Tecnica</label><textarea id="fEspTecnica" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Detalle tecnico"></textarea></div>
+        <div class="mb-2"><label class="small fw-bold">Especificacion Funcional</label><textarea id="fEspFuncional" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Detalle funcional"></textarea></div>
+    </div>
+    <div class="mt-3"><button onclick="save()" class="btn btn-danger w-100 fw-bold" id="fModalBtn">GUARDAR</button></div>
+</div></div></div></div>
+
+<div class="modal fade" id="notaModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--optimia-black);color:white;border-bottom:3px solid #f5a623;">
+                <div>
+                    <h6 class="modal-title fw-bold mb-0">📝 Notas de la tarea</h6>
+                    <p class="small mb-0 mt-1" style="color:rgba(255,255,255,0.6);" id="notaSubtitle"></p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <input type="hidden" id="nTareaId">
+                <textarea id="notaEditor"></textarea>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-warning fw-bold px-4" onclick="guardarNota()">💾 GUARDAR NOTA</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="reporteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#2D2926;color:white;border-bottom:3px solid #A6192E;">
+                <h6 class="modal-title fw-bold mb-0">📋 Reporte — listo para copiar</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="px-3 pt-2 pb-1 d-flex justify-content-between align-items-center" style="background:#f8f9fa;border-bottom:1px solid #dee2e6;">
+                    <span class="small text-muted">Selecciona todo el contenido del área y cópialo (Ctrl+A → Ctrl+C)</span>
+                    <button class="btn btn-sm btn-dark fw-bold" onclick="copiarReporte()">📋 COPIAR TODO</button>
+                </div>
+                <div id="reporteContenido" contenteditable="true" style="padding:24px 28px; min-height:200px; outline:none; line-height:1.5; font-size:0.8rem;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- NUEVO MODAL: Detalle Unificado de Subactividad/Subtarea para la vista de Reporte -->
+<div class="modal fade" id="subtaskDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: var(--optimia-black); color: white; border-bottom: 3px solid var(--optimia-red);">
+                <h6 class="modal-title fw-bold" id="detailModalTitle">Detalle General de Subtarea</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" style="max-height: 75vh; overflow-y: auto;">
+                <div class="row">
+                    <div class="col-md-6 modal-detail-section">
+                        <div class="modal-detail-title">Jira</div>
+                        <div class="modal-detail-value fw-bold text-primary" id="detJira">-</div>
+                    </div>
+                    <div class="col-md-6 modal-detail-section">
+                        <div class="modal-detail-title">MSD</div>
+                        <div class="modal-detail-value fw-bold text-success" id="detMsd">-</div>
+                    </div>
+                    <div class="col-12 modal-detail-section">
+                        <div class="modal-detail-title">Especificación Técnica</div>
+                        <div class="modal-detail-value text-muted" id="detEspTecnica" style="white-space: pre-wrap;">-</div>
+                    </div>
+                    <div class="col-12 modal-detail-section">
+                        <div class="modal-detail-title">Especificación Funcional</div>
+                        <div class="modal-detail-value text-muted" id="detEspFuncional" style="white-space: pre-wrap;">-</div>
+                    </div>
+                    <div class="col-md-6 modal-detail-section">
+                        <div class="modal-detail-title">⚠️ Alerta</div>
+                        <div class="modal-detail-value text-warning fw-bold" id="detAlerta">-</div>
+                    </div>
+                    <div class="col-md-6 modal-detail-section">
+                        <div class="modal-detail-title">🔴 Bloqueante</div>
+                        <div class="modal-detail-value text-danger fw-bold" id="detBloqueante">-</div>
+                    </div>
+                </div>
+
+                <h6 class="fw-bold mt-3 border-bottom pb-2 text-dark">📋 Historial de Avances y Actividades</h6>
+                <div id="detAvancesContenedor"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Alertas de atraso de avance -->
+<div class="modal fade" id="alertaAtrasoModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#856404;color:white;border-bottom:3px solid #ffc107;">
+                <div>
+                    <h6 class="modal-title fw-bold mb-0">⏰ Avance con atraso</h6>
+                    <p class="small mb-0 mt-1" style="color:rgba(255,255,255,0.75);" id="atrasoSubtitle"></p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="atrasoAvanceId">
+                <input type="hidden" id="atrasoOwner">
+                <div id="atrasoHistorial" class="mb-3"></div>
+                <div id="atrasoFormSection">
+                    <label class="small fw-bold mb-1">Justificación del atraso <span class="text-danger">*</span></label>
+                    <textarea id="atrasoTexto" class="form-control form-control-sm" rows="3" spellcheck="true" placeholder="Explica el motivo del atraso..."></textarea>
+                    <div class="mt-3">
+                        <button class="btn btn-warning fw-bold w-100" onclick="guardarAtraso()">💾 GUARDAR JUSTIFICACIÓN</button>
+                    </div>
+                </div>
+                <div id="atrasoBloqueoMsg" style="display:none;" class="alert alert-warning py-2 px-3 mt-2 small"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
+<script>
+    var rawData = [], userList = [], categorias = [], notasData = {}, currentTab = 'gestion', mEntry, mNota, mDetail, mAtraso, currentUserEmail = "", userRole = "", hasProjects = false, ckEditor = null, ckNota = null;
+
+    window.onload = () => {
+        mEntry = new bootstrap.Modal(document.getElementById('entryModal'), { backdrop: true, keyboard: true, focus: false });
+        mNota  = new bootstrap.Modal(document.getElementById('notaModal'));
+        mDetail = new bootstrap.Modal(document.getElementById('subtaskDetailModal'));
+        mAtraso = new bootstrap.Modal(document.getElementById('alertaAtrasoModal'));
+
+        document.getElementById('notaModal').addEventListener('shown.bs.modal', () => {
+            if (!ckNota) {
+                ClassicEditor.create(document.getElementById('notaEditor'), {
+                    language: 'es',
+                    toolbar: ['bold', 'italic', 'underline', '|', 'bulletedList', 'numberedList', '|', 'link', '|', 'undo', 'redo'],
+                    link: { defaultProtocol: 'https://', addTargetToExternalLinks: true }
+                }).then(editor => {
+                    ckNota = editor;
+                    if (window._pendingNotaData !== undefined) {
+                        ckNota.setData(window._pendingNotaData);
+                        window._pendingNotaData = undefined;
+                    }
+                }).catch(err => console.error('CKEditor Nota error:', err));
+            } else if (window._pendingNotaData !== undefined) {
+                ckNota.setData(window._pendingNotaData);
+                window._pendingNotaData = undefined;
+            }
+        });
+
+        document.getElementById('entryModal').addEventListener('shown.bs.modal', () => {
+            if (!ckEditor) {
+                ClassicEditor.create(document.getElementById('fDesc'), {
+                    language: 'es',
+                    toolbar: ['bold', 'italic', 'underline', '|', 'bulletedList', 'numberedList', '|', 'link', '|', 'undo', 'redo'],
+                    link: { defaultProtocol: 'https://', addTargetToExternalLinks: true }
+                }).then(editor => {
+                    ckEditor = editor;
+                    editor.ui.focusTracker.on('change:isFocused', (evt, name, isFocused) => {
+                        const modalEl = document.getElementById('entryModal');
+                        if (!isFocused) {
+                            modalEl.removeAttribute('data-bs-focus');
+                        }
+                    });
+                    if (window._pendingCkData !== undefined) {
+                        ckEditor.setData(window._pendingCkData);
+                        window._pendingCkData = undefined;
+                    }
+                }).catch(err => console.error('CKEditor error:', err));
+            } else if (window._pendingCkData !== undefined) {
+                ckEditor.setData(window._pendingCkData);
+                window._pendingCkData = undefined;
+            }
+            if (window.$) {
+                $('#fCategoria').select2({ dropdownParent: $('#entryModal'), placeholder: 'Escribe para buscar...', allowClear: true, width: '100%' });
+            }
+        });
+
+        document.getElementById('entryModal').addEventListener('focusin.bs.modal', e => {
+            if (e.target.closest('.ck-balloon-panel') || e.target.closest('.ck-body-wrapper')) {
+                e.stopImmediatePropagation();
+            }
+        }, true);
+
+        showL(true);
+        google.script.run.withSuccessHandler(res => {
+            userList = res.userList; currentUserEmail = res.email.toLowerCase(); userRole = res.role;
+            categorias = res.categorias || [];
+            const selU = document.getElementById('userSelect'), selP = document.getElementById('projSelect'),
+                  selFP = document.getElementById('fProj'), selFO = document.getElementById('fOwner');
+
+            if (res.role === "Líder") {
+              selU.add(new Option("VISTA GLOBAL", "TODOS"));
+              res.userList.forEach(u => { selU.add(new Option(u, u)); selFO.add(new Option(u, u)); });
+            } else {
+              selU.add(new Option(currentUserEmail, currentUserEmail));
+              selFO.add(new Option(currentUserEmail, currentUserEmail));
+            }
+            selU.value = currentUserEmail;
+
+            if (res.projects.length > 0) {
+                hasProjects = true;
+                res.projects.forEach(p => { selP.add(new Option(p.nombre, p.id)); selFP.add(new Option(p.nombre, p.id)); });
+                document.getElementById('btnNewTask').style.display = 'block';
+                loadData();
+            } else {
+                document.getElementById('mainUI').innerHTML = "<div class='alert alert-warning m-3'>No tienes proyectos asignados.</div>";
+                showL(false);
+            }
+        }).getAppData();
+    };
+
+    function changeTab(t) {
+        currentTab = t;
+        document.getElementById('btnGest').className = t === 'gestion' ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
+        document.getElementById('btnRepo').className = t === 'reporte' ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
+        document.getElementById('filterSection').style.display = t === 'reporte' ? 'block' : 'none';
+        document.getElementById('btnNewTask').style.display = (t === 'gestion' && hasProjects) ? 'block' : 'none';
+        renderUI();
+    }
+
+    function loadData() {
+        showL(true);
+        const u = document.getElementById('userSelect').value, p = document.getElementById('projSelect').value;
+        const cb = data => {
+            rawData = data;
+            notasData = {};
+            rawData.filter(e => e.tipo === 'Tarea' && e.nota).forEach(t => { notasData[t.id] = t.nota; });
+            renderUI(); showL(false);
+        };
+        if (u === "TODOS") google.script.run.withSuccessHandler(cb).fetchAllEntries(userList, p);
+        else google.script.run.withSuccessHandler(cb).fetchEntries(u, p);
+    }
+
+    function validateDate(av) {
+        const f1 = document.getElementById('f1').value, f2 = document.getElementById('f2').value;
+        if (!f1 || !f2) return true;
+        const d1 = new Date(f1 + "T00:00:00"), d2 = new Date(f2 + "T00:00:00");
+        if (av.estado === 'Terminada') {
+            if (!av.fechaFin) return false;
+            const dFin = new Date(av.fechaFin + "T00:00:00");
+            return dFin >= d1 && dFin <= d2;
+        }
+        if (!av.fechaInicio) return false;
+        const dInicio = new Date(av.fechaInicio + "T00:00:00");
+        return dInicio <= d2;
+    }
+
+    function verDetalleSubtareaEnReporte(subtaskId) {
+        const st = rawData.find(e => e.id === subtaskId);
+        if (!st) return;
+
+        document.getElementById('detailModalTitle').innerText = `Subtarea: ${st.desc}`;
+        document.getElementById('detJira').innerText = st.jira || 'No parametrizado';
+        document.getElementById('detMsd').innerText = st.msd || 'No parametrizado';
+        document.getElementById('detEspTecnica').innerText = st.espTecnica || 'Sin especificación técnica registrada';
+        document.getElementById('detEspFuncional').innerText = st.espFuncional || 'Sin especificación funcional registrada';
+        document.getElementById('detAlerta').innerText = st.alerta || 'Sin alertas';
+        document.getElementById('detBloqueante').innerText = st.bloqueante || 'Sin bloqueantes';
+
+        let avs = rawData.filter(av => av.parentId === st.id && av.estado !== 'Eliminada' && validateDate(av));
+        const contenedor = document.getElementById('detAvancesContenedor');
+        contenedor.innerHTML = '';
+
+        if (avs.length === 0) {
+            contenedor.innerHTML = '<div class="text-muted small py-2">No se registran actividades para esta subtarea bajo los filtros de fecha seleccionados.</div>';
+        } else {
+            avs.forEach(av => {
+                const badgeClass = av.estado === 'Terminada' ? 'bg-danger' : (av.estado === 'Bloqueada' ? 'bg-dark' : 'bg-secondary');
+                const obsInfo = separarObservacionesYAtrasos(av.observaciones || '');
+                const atrasosHtml = obsInfo.atrasos.length
+                    ? `<div class="col-12 mt-3">
+                            <div class="small fw-bold mb-2" style="color:#856404;">⏰ Avances con atraso registrados</div>
+                            ${obsInfo.atrasos.map(a => `
+                                <div class="hist-atraso-item">
+                                    <div class="hist-atraso-fecha">${a.fecha}</div>
+                                    <div>${a.texto}</div>
+                                </div>
+                            `).join('')}
+                        </div>`
+                    : '';
+                const div = document.createElement('div');
+                div.className = 'avance-card-detail';
+                div.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="badge ${badgeClass}">${av.estado}</span>
+                        <span class="small text-muted"><strong>Vigencia:</strong> ${av.fechaInicio || '-'} hasta ${av.fechaFin || 'En Proceso'}</span>
+                    </div>
+                    <div class="mb-2 ck-content-render"><strong>Descripción:</strong> ${av.desc}</div>
+                    <div class="row text-muted small">
+                        <div class="col-md-6"><strong>¿Tiene Entregable?:</strong> ${av.sinEntregable ? 'No' : 'Sí'}</div>
+                        <div class="col-md-6"><strong>Entregable:</strong> ${av.entregable ? `<a href="${av.entregable}" target="_blank">Enlace</a>` : (av.sinEntregable ? 'N/A' : '-')}</div>
+                        <div class="col-md-6 mt-1"><strong>Evidencia:</strong> ${av.evidencia ? (av.evidencia.startsWith('http') ? `<a href="${av.evidencia}" target="_blank">Enlace</a>` : av.evidencia) : '-'}</div>
+                        <div class="col-md-6 mt-1"><strong>Justificación/Obs:</strong> ${obsInfo.textoLibre || '-'}</div>
+                        ${atrasosHtml}
+                    </div>
+                `;
+                contenedor.appendChild(div);
+            });
+        }
+        mDetail.show();
+    }
+
+    function renderUI() {
+        const cont = document.getElementById('mainUI'); cont.innerHTML = "";
+        const selUser = document.getElementById('userSelect').value;
+        const targets = (selUser === "TODOS") ? userList : [selUser];
+
+        targets.forEach(user => {
+            const uData = rawData.filter(d => d.owner === user);
+            if (uData.length > 0) {
+                const userBlock = document.createElement('div');
+                let hasVisibleContentForUser = false;
+
+                uData.filter(e => e.tipo === 'Tarea').forEach(t => {
+                    if (currentTab === 'gestion' && t.estado === 'Terminada') return;
+                    const subTareas = uData.filter(st => st.parentId === t.id);
+                    let hasVisibleSubtask = false;
+                    const taskContent = document.createElement('div');
+
+                    subTareas.forEach(st => {
+                        if (currentTab === 'gestion' && st.estado === 'Terminada') return;
+                        let avs = uData.filter(av => av.parentId === st.id);
+                        if (currentTab === 'gestion') avs = avs.filter(av => av.estado !== 'Terminada' && av.estado !== 'Eliminada');
+                        else avs = avs.filter(av => av.estado !== 'Eliminada' && validateDate(av));
+
+                        if (currentTab === 'gestion' || avs.length > 0) {
+                            hasVisibleSubtask = true; hasVisibleContentForUser = true;
+                            const box = document.createElement('div');
+                            box.className = currentTab === 'reporte' ? "level-2-box clickable-report-task" : "level-2-box";
+
+                            if(currentTab === 'reporte') {
+                                box.setAttribute('onclick', `verDetalleSubtareaEnReporte('${st.id}')`);
+                            }
+
+                            let html = `<div class="level-2-title">
+                                <span>${st.desc}`;
+                            if(currentTab === 'gestion') {
+                                if(st.alerta)     html += ` <span class="badge-opt" style="background:#fff3cd;color:#856404;border:1px solid #ffc107;">⚠️ Alerta</span>`;
+                                if(st.bloqueante) html += ` <span class="badge-opt" style="background:#f8d7da;color:#842029;border:1px solid #f5c2c7;">🔴 Bloqueante</span>`;
+                            }
+                            html += `</span>`;
+                            if(currentTab === 'gestion') {
+                                html += `<div class="actions-wrap" style="gap:4px;">`;
+                                if(st.owner === currentUserEmail)
+                                    html += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${st.id}')">✏️ Editar</button>`;
+                                html += `<button class="btn btn-danger btn-sm px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="openModal('Avance','${st.id}','')">+ Actividad</button>`;
+                                html += `</div>`;
+                            }
+                            html += `</div>`;
+
+                            if(avs.length > 0) {
+                                html += `<div class="level-3-list">`;
+                                avs.forEach(av => {
+                                    const stClass = av.estado === 'Terminada' ? 'st-done' : (av.estado === 'Bloqueada' ? 'st-block' : 'st-process');
+                                    const fechaLabel = av.fechaInicio ? `<span class="small text-muted ms-1" style="font-size:0.72rem;">📅 ${av.fechaInicio}</span>` : '';
+                                    const estadoLabel = currentTab === 'reporte' ? ` <span class="small fw-bold text-muted">(${av.estado})</span>` : '';
+
+                                    // ── Badge de atraso (solo gestión, avances no terminados) ──
+                                    let badgeAtraso = '';
+                                    if (currentTab === 'gestion' && av.estado !== 'Terminada' && av.estado !== 'Eliminada') {
+                                        const info = calcularInfoAtraso(av);
+                                        if (info.enAtraso) {
+                                            const bloqueado = !info.puedeJustificar;
+                                            const cls = bloqueado ? 'badge-atraso bloqueado' : 'badge-atraso';
+                                            const tip = bloqueado
+                                                ? `title="Ya justificado. Disponible en ${info.diasRestantes} día(s)"`
+                                                : `title="Avance sin cerrar hace ${info.diasAtraso} días. Haz clic para justificar"`;
+                                            const click = bloqueado ? '' : `onclick="abrirAtraso('${av.id}','${av.owner}','${av.desc.replace(/'/g,"\\'").substring(0,40)}')"`;
+                                            badgeAtraso = ` <span class="${cls}" ${tip} ${click}>⏰ ${info.diasAtraso}d</span>`;
+                                        }
+                                    }
+
+                                    html += `<div class="level-3-item">
+                                        <span class="ck-content-render">${av.desc}${estadoLabel}${currentTab === 'gestion' ? fechaLabel : ''}${badgeAtraso}</span>`;
+                                    if(currentTab === 'gestion') {
+                                        html += `<div class="actions-wrap" style="gap:4px;">`;
+                                            if(av.estado !== 'En proceso')
+                                                html += `<span class="badge-opt ${stClass}">${av.estado}</span>`;
+                                        if(av.owner === currentUserEmail) {
+                                            html += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${av.id}')">✏️ Editar</button>`;
+                                            html += `<button class="btn btn-sm btn-outline-danger px-2;font-size:10px;white-space:nowrap;" onclick="eliminarAvance('${av.id}','${av.desc.replace(/'/g,"\\'").substring(0,40)}')">🗑️ Eliminar</button>`;
+                                        }
+                                        html += `</div>`;
+                                    }
+                                    html += `</div>`;
+                                });
+                                html += `</div>`;
+                            }
+                            box.innerHTML = html; taskContent.appendChild(box);
+                        }
+                    });
+
+                    if (currentTab === 'gestion' || hasVisibleSubtask) {
+                        const tHeader = document.createElement('div'); tHeader.className = "level-1-header";
+                        let hHtml = `<span>${t.desc}</span>`;
+                        if(currentTab === 'gestion') {
+                            hHtml += `<div class='actions-wrap' style='gap:4px;'>`;
+                            if(t.owner === currentUserEmail)
+                                hHtml += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${t.id}')">✏️ Editar</button>`;
+                            hHtml += `<button class='btn btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;background:#fffbea;color:#856404;border:1px solid #ffe066;' onclick="abrirNota('${t.id}','${t.desc.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">📝 Notas</button>`;
+                            hHtml += `<button class='btn btn-primary btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;' onclick="openModal('Subtarea','${t.id}','')">+ Subtarea</button>`;
+                            hHtml += `</div>`;
+                        }
+                        tHeader.innerHTML = hHtml;
+
+                        const notaWrap = document.createElement('div');
+                        if (currentTab === 'gestion' && notasData[t.id]) {
+                            notaWrap.innerHTML = `<div class="nota-block ck-content-render">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="small fw-bold" style="color:#856404;">📝 Notas</span>
+                                </div>
+                                ${notasData[t.id]}
+                            </div>`;
+                        }
+
+                        userBlock.appendChild(tHeader);
+                        if (notaWrap.innerHTML) userBlock.appendChild(notaWrap);
+                        userBlock.appendChild(taskContent);
+                        if (currentTab === 'gestion') hasVisibleContentForUser = true;
+                    }
+                });
+                if (hasVisibleContentForUser) {
+                    const userTitle = document.createElement('div'); userTitle.className = "small fw-bold text-muted mt-4 border-bottom";
+                    userTitle.innerText = "USUARIO: " + user.toUpperCase();
+                    cont.appendChild(userTitle); cont.appendChild(userBlock);
+                }
+            }
+        });
+        if (cont.innerHTML === "") cont.innerHTML = "<div class='text-center py-5 text-muted'>Sin información para mostrar.</div>";
+    }
+
+    function onEstadoChange() {
+        const est = document.getElementById('fEst').value;
+        const tipo = document.getElementById('fType').value;
+        if (tipo !== 'Avance') return;
+        const sinEnt = document.getElementById('fSinEntregable').checked;
+        const reqSpan = document.getElementById('fEvidenciaReq');
+        const reqEntregableSpan = document.getElementById('fEntregableReq');
+        if (sinEnt) {
+            reqSpan.style.display = 'none';
+            reqEntregableSpan.style.display = 'none';
+        } else {
+            reqSpan.style.display = (est === 'Terminada') ? 'inline' : 'none';
+            reqEntregableSpan.style.display = (est === 'Terminada') ? 'inline' : 'none';
+        }
+    }
+
+    function onSinEntregableChange() {
+        const checked = document.getElementById('fSinEntregable').checked;
+        document.getElementById('fCampoObservaciones').style.display = checked ? 'block' : 'none';
+        document.getElementById('fEvidencia').disabled = checked;
+        document.getElementById('fEntregable').disabled = checked;
+        if (checked) {
+            document.getElementById('fEvidencia').value = '';
+            document.getElementById('fEntregable').value = '';
+            document.getElementById('fEvidenciaReq').style.display = 'none';
+            document.getElementById('fEntregableReq').style.display = 'none';
+        } else {
+            document.getElementById('fEvidencia').disabled = false;
+            document.getElementById('fEntregable').disabled = false;
+            onEstadoChange();
+        }
+    }
+
+    function openModal(t, pId, id, de='', fI='', fF='', es='En proceso', owner='', pProj='', alerta='', bloqueante='', categoria='', jira='', msd='', espTecnica='', espFuncional='', evidencia='', sinEntregable=false, observaciones='', entregable='', interno=false) {
+        const isEdit = id !== '';
+        const typeLabel = { 'Tarea': 'Tarea', 'Subtarea': 'Subtarea', 'Avance': 'Actividad' };
+        const label = typeLabel[t] || t;
+
+        document.getElementById('fModalTitle').innerText = isEdit ? `Modificar ${label}` : `Nueva ${label}`;
+        document.getElementById('fModalSubtitle').innerText = isEdit ? `Estás editando una ${label.toLowerCase()} existente` : `Completa los datos para registrar la nueva ${label.toLowerCase()}`;
+        document.getElementById('fModalBtn').innerText = isEdit ? `GUARDAR CAMBIOS` : `REGISTRAR ${label.toUpperCase()}`;
+
+        const camposAlerta = document.getElementById('fCamposAlerta');
+        camposAlerta.style.display = t === 'Subtarea' ? 'block' : 'none';
+        document.getElementById('fAlerta').value     = alerta;
+        document.getElementById('fBloqueante').value = bloqueante;
+
+        const camposSubtareaExtra = document.getElementById('fCamposSubtareaExtra');
+        camposSubtareaExtra.style.display = t === 'Subtarea' ? 'block' : 'none';
+        document.getElementById('fJira').value         = jira;
+        document.getElementById('fMsd').value          = msd;
+        document.getElementById('fEspTecnica').value   = espTecnica;
+        document.getElementById('fEspFuncional').value = espFuncional;
+
+        const camposCat = document.getElementById('fCampoCategoria');
+        camposCat.style.display = t === 'Avance' ? 'block' : 'none';
+
+        const camposAvance = document.getElementById('fCamposAvance');
+        camposAvance.style.display = t === 'Avance' ? 'block' : 'none';
+        if (t === 'Avance') {
+            document.getElementById('fEvidencia').value        = evidencia;
+            document.getElementById('fEntregable').value       = entregable;
+            document.getElementById('fSinEntregable').checked  = sinEntregable;
+            document.getElementById('fInterno').checked        = interno;
+            document.getElementById('fObservaciones').value    = observaciones;
+            document.getElementById('fCampoObservaciones').style.display = sinEntregable ? 'block' : 'none';
+            document.getElementById('fEvidencia').disabled     = sinEntregable;
+            document.getElementById('fEntregable').disabled    = sinEntregable;
+            onEstadoChange();
+        } else {
+            document.getElementById('fEvidencia').value        = '';
+            document.getElementById('fEntregable').value       = '';
+            document.getElementById('fSinEntregable').checked  = false;
+            document.getElementById('fInterno').checked        = false;
+            document.getElementById('fObservaciones').value    = '';
+            document.getElementById('fCampoObservaciones').style.display = 'none';
+        }
+        const sel = document.getElementById('fCategoria');
+        sel.innerHTML = '<option value="">-- Selecciona una categoría --</option>';
+        categorias.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.nombre; opt.text = c.nombre;
+            if (c.nombre === categoria) opt.selected = true;
+            sel.appendChild(opt);
+        });
+        if (window.$) {
+            $('#fCategoria').select2({ dropdownParent: $('#entryModal'), placeholder: 'Escribe para buscar...', allowClear: true, width: '100%' });
+            $('#fCategoria').val(categoria || '').trigger('change');
+        }
+
+        document.getElementById('fId').value = id;
+        document.getElementById('fType').value = t;
+        document.getElementById('fParent').value = pId;
+        if (ckEditor) ckEditor.setData(de);
+        else window._pendingCkData = de;
+        const fechaInicio = fI || new Date().toISOString().split('T')[0];
+        document.getElementById('fIn').value = fechaInicio;
+        document.getElementById('fInLabel').innerText = fechaInicio;
+        document.getElementById('fFi').value = fF;
+        document.getElementById('fEst').value = es;
+        document.getElementById('fProj').value = pProj || document.getElementById('projSelect').value;
+
+        const selOwner = document.getElementById('fOwner');
+        if (userRole === "Líder") {
+            selOwner.disabled = false;
+            selOwner.value = owner || (document.getElementById('userSelect').value === "TODOS" ? currentUserEmail : document.getElementById('userSelect').value);
+        } else {
+            selOwner.value = currentUserEmail;
+            selOwner.disabled = true;
+        }
+        mEntry.show();
+    }
+
+    function edit(id) { const it = rawData.find(e => e.id === id); if(it) openModal(it.tipo, it.parentId, it.id, it.desc, it.fechaInicio, it.fechaFin, it.estado, it.owner, it.projectId, it.alerta||'', it.bloqueante||'', it.categoria||'', it.jira||'', it.msd||'', it.espTecnica||'', it.espFuncional||'', it.evidencia||'', it.sinEntregable||false, it.observaciones||'', it.entregable||'', it.interno||false); }
+
+    function save() {
+        const fFi        = document.getElementById('fFi').value;
+        const fEst       = document.getElementById('fEst').value;
+        const fTipo      = document.getElementById('fType').value;
+        const sinEnt     = fTipo === 'Avance' ? document.getElementById('fSinEntregable').checked : false;
+        const interno    = fTipo === 'Avance' ? document.getElementById('fInterno').checked : false;
+        const evidencia  = fTipo === 'Avance' ? document.getElementById('fEvidencia').value.trim() : '';
+        const entregable = fTipo === 'Avance' ? document.getElementById('fEntregable').value.trim() : '';
+        const observaciones = fTipo === 'Avance' ? document.getElementById('fObservaciones').value.trim() : '';
+
+        if (fFi !== "" && fEst !== "Terminada") { alert("⚠️ Si hay fecha de fin, el estado debe ser 'Terminada'."); return; }
+        if (fEst === "Terminada" && fFi === "") { alert("⚠️ Si el estado es 'Terminada', la fecha de fin es obligatoria."); return; }
+
+        if (fTipo === 'Avance' && fEst === 'Terminada') {
+            if (sinEnt) {
+                if (!observaciones) {
+                    alert("⚠️ Marcaste 'Sin Entregable'. Debes ingresar una Observación para justificarlo.");
+                    document.getElementById('fObservaciones').focus();
+                    return;
+                }
+            } else {
+                if (!evidencia) {
+                    alert("⚠️ Para cerrar una actividad debes ingresar la Evidencia.");
+                    document.getElementById('fEvidencia').focus();
+                    return;
+                }
+                if (!entregable) {
+                    alert("⚠️ Para cerrar una actividad debes ingresar el Entregable.");
+                    document.getElementById('fEntregable').focus();
+                    return;
+                }
+            }
+        }
+        const cat = (window.$ ? $('#fCategoria').val() : document.getElementById('fCategoria').value) || '';
+        if (fTipo === 'Avance' && !cat) {
+            alert("⚠️ La categoría es obligatoria.");
+            document.getElementById('fCategoria').focus();
+            return;
+        }
+
+        showL(true);
+        const data = {
+            userOwner:    document.getElementById('fOwner').value,
+            projectId:    document.getElementById('fProj').value,
+            id:           document.getElementById('fId').value,
+            tipo:         fTipo,
+            parentId:     document.getElementById('fParent').value,
+            desc:         ckEditor ? ckEditor.getData().trim() : document.getElementById('fDesc').value.trim(),
+            fechaInicio:  document.getElementById('fIn').value,
+            fechaFin:     fFi,
+            estado:       fEst,
+            alerta:       document.getElementById('fAlerta').value.trim(),
+            bloqueante:   document.getElementById('fBloqueante').value.trim(),
+            categoria:    cat,
+            jira:         fTipo === 'Subtarea' ? document.getElementById('fJira').value.trim() : '',
+            msd:          fTipo === 'Subtarea' ? document.getElementById('fMsd').value.trim() : '',
+            espTecnica:   fTipo === 'Subtarea' ? document.getElementById('fEspTecnica').value.trim() : '',
+            espFuncional: fTipo === 'Subtarea' ? document.getElementById('fEspFuncional').value.trim() : '',
+            evidencia:    fTipo === 'Avance' ? evidencia : '',
+            entregable:   fTipo === 'Avance' ? entregable : '',
+            sinEntregable:fTipo === 'Avance' ? sinEnt : false,
+            interno:      fTipo === 'Avance' ? interno : false,
+            observaciones:fTipo === 'Avance' ? observaciones : ''
+        };
+        google.script.run.withSuccessHandler(() => { mEntry.hide(); loadData(); }).saveOrUpdateEntry(data);
+    }
+
+    function abrirNota(tareaId, tareaDesc) {
+        document.getElementById('nTareaId').value = tareaId;
+        document.getElementById('notaSubtitle').innerText = tareaDesc;
+        const contenido = notasData[tareaId] || '';
+        if (ckNota) ckNota.setData(contenido);
+        else window._pendingNotaData = contenido;
+        mNota.show();
+    }
+
+    function guardarNota() {
+        const tareaId   = document.getElementById('nTareaId').value;
+        const contenido = ckNota ? ckNota.getData() : '';
+        const tarea     = rawData.find(e => e.id === tareaId);
+        if (!tarea) return;
+        showL(true);
+        google.script.run
+            .withSuccessHandler(() => { mNota.hide(); loadData(); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .saveNota({ tareaId, owner: tarea.owner, contenido });
+    }
+
+    function eliminarAvance(id, desc) {
+        if (!confirm(`¿Eliminar esta actividad?\n\n"${desc}..."\n\nEsta acción es lógica y no se mostrará en la vista de gestión.`)) return;
+        const av = rawData.find(e => e.id === id);
+        if (!av) return;
+        showL(true);
+        const data = {
+            userOwner:   av.owner,
+            projectId:   av.projectId,
+            id:          av.id,
+            tipo:        av.tipo,
+            parentId:    av.parentId,
+            desc:        av.desc,
+            fechaInicio: av.fechaInicio,
+            fechaFin:    av.fechaFin,
+            estado:      'Eliminada',
+            alerta:       av.alerta     || '',
+            bloqueante:   av.bloqueante || '',
+            categoria:    av.categoria  || '',
+            nota:         av.nota       || '',
+            evidencia:    av.evidencia  || '',
+            entregable:   av.entregable || '',
+            sinEntregable:av.sinEntregable || false,
+            interno:      av.interno    || false,
+            observaciones:av.observaciones || ''
+        };
+        google.script.run
+            .withSuccessHandler(() => loadData())
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .saveOrUpdateEntry(data);
+    }
+
+    function showL(s) { document.getElementById('loading').style.display = s ? 'flex' : 'none'; }
+
+    // ══════════════════════════════════════════════════
+    //  ATRASO DE AVANCES — lógica de 7 días
+    // ══════════════════════════════════════════════════
+
+    // Parsea el historial de justificaciones almacenado en av.observaciones
+    // Formato: "[yyyy-MM-dd]::texto homoplato [yyyy-MM-dd]::texto ..."
+    function parsearHistorialAtraso(observaciones) {
+        if (!observaciones || !observaciones.trim()) return [];
+        return observaciones.split('homoplato')
+            .map(e => e.trim())
+            .filter(e => e)
+            .map(e => {
+                const m = e.match(/^\[(\d{4}-\d{2}-\d{2})\]::([\s\S]*)$/);
+                return m ? { fecha: m[1], texto: m[2].trim() } : null;
+            })
+            .filter(Boolean);
+    }
+
+    function separarObservacionesYAtrasos(observaciones) {
+        if (!observaciones || !observaciones.trim()) return { textoLibre: '', atrasos: [] };
+
+        const partes = observaciones.split('homoplato')
+            .map(e => e.trim())
+            .filter(Boolean);
+
+        const atrasos = [];
+        const libres = [];
+
+        partes.forEach(parte => {
+            const m = parte.match(/^\[(\d{4}-\d{2}-\d{2})\]::([\s\S]*)$/);
+            if (m) atrasos.push({ fecha: m[1], texto: m[2].trim() });
+            else libres.push(parte);
+        });
+
+        return {
+            textoLibre: libres.join('<br>'),
+            atrasos: atrasos
+        };
+    }
+
+    // Calcula días entre dos fechas string yyyy-MM-dd
+    function diasEntre(fechaStr1, fechaStr2) {
+        const d1 = new Date(fechaStr1 + 'T00:00:00');
+        const d2 = new Date(fechaStr2 + 'T00:00:00');
+        return Math.floor((d2 - d1) / 86400000);
+    }
+
+    // Devuelve info de atraso para un avance
+    function calcularInfoAtraso(av) {
+        if (av.estado === 'Terminada' || av.estado === 'Eliminada') {
+            return { enAtraso: false };
+        }
+        if (!av.fechaInicio) return { enAtraso: false };
+
+        const hoy = new Date().toISOString().split('T')[0];
+        const historial = parsearHistorialAtraso(av.observaciones);
+        const ultimaFechaRef = historial.length > 0
+            ? historial[historial.length - 1].fecha
+            : av.fechaInicio;
+
+        const diasAtraso = diasEntre(ultimaFechaRef, hoy);
+
+        if (diasAtraso < 7) return { enAtraso: false };
+
+        // Ya en atraso: ¿puede justificar (pasaron >= 7 días desde la última justificación)?
+        const puedeJustificar = historial.length === 0 || diasEntre(historial[historial.length - 1].fecha, hoy) >= 7;
+        const diasRestantes   = puedeJustificar ? 0 : 7 - diasEntre(historial[historial.length - 1].fecha, hoy);
+
+        return { enAtraso: true, diasAtraso, puedeJustificar, diasRestantes, historial };
+    }
+
+    function abrirAtraso(avanceId, owner, desc) {
+        const av = rawData.find(e => e.id === avanceId);
+        if (!av) return;
+        const info = calcularInfoAtraso(av);
+
+        document.getElementById('atrasoAvanceId').value = avanceId;
+        document.getElementById('atrasoOwner').value    = owner;
+        document.getElementById('atrasoSubtitle').innerText = desc;
+        document.getElementById('atrasoTexto').value    = '';
+        document.getElementById('atrasoBloqueoMsg').style.display = 'none';
+
+        // Renderizar historial previo
+        const histEl = document.getElementById('atrasoHistorial');
+        if (info.historial && info.historial.length > 0) {
+            histEl.innerHTML = `<div class="small fw-bold text-muted mb-2">📋 Justificaciones anteriores</div>` +
+                info.historial.map(h =>
+                    `<div class="hist-atraso-item"><div class="hist-atraso-fecha">${h.fecha}</div><div>${h.texto}</div></div>`
+                ).join('');
+        } else {
+            histEl.innerHTML = '';
+        }
+
+        const formEl = document.getElementById('atrasoFormSection');
+        const bloqEl = document.getElementById('atrasoBloqueoMsg');
+
+        if (!info.puedeJustificar) {
+            formEl.style.display = 'none';
+            bloqEl.style.display = 'block';
+            bloqEl.innerHTML = `⏳ Ya registraste una justificación. Podrás ingresar una nueva en <strong>${info.diasRestantes}</strong> día(s).`;
+        } else {
+            formEl.style.display = 'block';
+            bloqEl.style.display = 'none';
+        }
+
+        mAtraso.show();
+    }
+
+    function guardarAtraso() {
+        const avanceId      = document.getElementById('atrasoAvanceId').value;
+        const owner         = document.getElementById('atrasoOwner').value;
+        const justificacion = document.getElementById('atrasoTexto').value.trim();
+
+        if (!justificacion) {
+            alert('⚠️ Debes ingresar una justificación.');
+            document.getElementById('atrasoTexto').focus();
+            return;
+        }
+
+        showL(true);
+        google.script.run
+            .withSuccessHandler(() => { mAtraso.hide(); loadData(); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .saveAtrasoAvance({ avanceId, owner, justificacion });
+    }
+
+    function abrirModalReporte() {
+        const selUser = document.getElementById('userSelect').value;
+        const targets = (selUser === 'TODOS') ? userList : [selUser];
+        const cont    = document.getElementById('reporteContenido');
+        cont.innerHTML = '';
+
+        targets.forEach(user => {
+            const uData = rawData.filter(d => d.owner === user);
+            if (!uData.length) return;
+
+            uData.filter(e => e.tipo === 'Tarea').forEach(t => {
+                const subTareas = uData.filter(st => st.parentId === t.id);
+                let tareaHtml = '';
+
+                subTareas.forEach(st => {
+                    let avs = uData.filter(av => av.parentId === st.id)
+               .filter(av => av.estado !== 'Eliminada' && validateDate(av) && !av.interno);
+                    if (!avs.length) return;
+
+                    const avsHtml = avs.map(av => {
+                        const estadoBadge = av.estado === 'Bloqueada'
+                            ? ' <span style="color:#A6192E;font-weight:700;">[BLOQUEADA]</span>'
+                            : av.estado === 'Terminada'
+                            ? ' <span style="color:#212529;font-weight:700;">[Terminada]</span>'
+                            : '';
+                        let descConBadge = av.desc;
+                        if (estadoBadge) {
+                            const lastClose = descConBadge.lastIndexOf('</');
+                            descConBadge = lastClose !== -1
+                                ? descConBadge.slice(0, lastClose) + estadoBadge + descConBadge.slice(lastClose)
+                                : descConBadge + estadoBadge;
+                        }
+                        return `<li>${descConBadge}</li>`;
+                    }).join('');
+
+                    tareaHtml += `<li><span style="font-weight:600;">${st.desc}</span><ul>${avsHtml}</ul></li>`;
+                });
+
+                if (tareaHtml) {
+                    cont.innerHTML += `<div><p><strong>${t.desc}</strong></p><ul>${tareaHtml}</ul></div>`;
+                }
+            });
+        });
+
+        if (!cont.innerHTML.trim()) {
+            cont.innerHTML = '<p style="color:#6c757d;text-align:center;padding:20px;">Sin información para mostrar con el filtro actual.</p>';
+        }
+
+        const alertas = [], bloqueantes = [];
+        targets.forEach(user => {
+            const uData = rawData.filter(d => d.owner === user);
+            uData.filter(d => d.tipo === 'Subtarea').forEach(st => {
+                const tieneAvances = uData.filter(av => av.parentId === st.id && av.estado !== 'Eliminada' && validateDate(av) && !av.interno).length > 0;
+                if (!tieneAvances) return;
+                if (st.alerta)     alertas.push({ subtarea: st.desc, texto: st.alerta });
+                if (st.bloqueante) bloqueantes.push({ subtarea: st.desc, texto: st.bloqueante });
+            });
+        });
+
+        let seccionAB = `<hr style="margin:16px 0;">`;
+        seccionAB += `<p><strong>⚠️ Alertas</strong></p>`;
+        seccionAB += alertas.length ? `<ul>${alertas.map(a => `<li><em>${a.subtarea}</em><ul><li>${a.texto}</li></ul></li>`).join('')}</ul>` : `<p>No se reportan alertas.</p>`;
+        seccionAB += `<p><strong>🔴 Bloqueantes</strong></p>`;
+        seccionAB += bloqueantes.length ? `<ul>${bloqueantes.map(b => `<li><em>${b.subtarea}</em><ul><li>${b.texto}</li></ul></li>`).join('')}</ul>` : `<p>No se reportan bloqueantes.</p>`;
+        cont.innerHTML += seccionAB;
+
+        new bootstrap.Modal(document.getElementById('reporteModal')).show();
+    }
+
+    function copiarReporte() {
+        const el = document.getElementById('reporteContenido');
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand('copy');
+        sel.removeAllRanges();
+        const btn = event.target;
+        btn.innerText = '✅ COPIADO';
+        setTimeout(() => btn.innerText = '📋 COPIAR TODO', 2000);
+    }
+
+    function goHome() {
+        showL(true);
+        google.script.run
+            .withSuccessHandler(html => { document.open(); document.write(html); document.close(); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .getView('home');
+    }
+</script>
+</body>
+</html>

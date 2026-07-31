@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --optimia-black: #2D2926; --optimia-red: #A6192E; --optimia-gray: #f8f9fa; }
+        body { background: var(--optimia-gray); font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .header-app { background: var(--optimia-black); border-bottom: 4px solid var(--optimia-red); padding: 1rem 0; color: white; }
+        .brand-logo { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-back { font-size: 0.75rem; padding: 4px 10px; border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 4px; background: transparent; cursor: pointer; }
+        .btn-back:hover { background: rgba(255,255,255,0.1); }
+
+        /* Tabs */
+        .cfg-tabs { display: flex; gap: 4px; border-bottom: 2px solid #dee2e6; margin-bottom: 1.5rem; }
+        .cfg-tab { padding: 8px 20px; font-weight: 700; font-size: 0.85rem; cursor: pointer; border-radius: 6px 6px 0 0; border: none; background: transparent; color: #6c757d; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+        .cfg-tab:hover { color: var(--optimia-black); background: #f0f0f0; }
+        .cfg-tab.active { color: var(--optimia-red); border-bottom-color: var(--optimia-red); background: white; }
+
+        /* Cards de sección */
+        .cfg-card { background: white; border-radius: 10px; border: 1px solid #dee2e6; padding: 1.5rem; margin-bottom: 1rem; }
+        .cfg-card-title { font-weight: 800; font-size: 1rem; color: var(--optimia-black); margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+
+        /* Tabla de items */
+        .cfg-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .cfg-table th { background: var(--optimia-black); color: white; padding: 8px 12px; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .cfg-table td { padding: 10px 12px; border-bottom: 1px solid #f1f1f1; vertical-align: middle; }
+        .cfg-table tr:last-child td { border-bottom: none; }
+        .cfg-table tr:hover td { background: #fafafa; }
+        .badge-rol { font-size: 0.7rem; padding: 3px 8px; border-radius: 12px; font-weight: 700; }
+        .badge-lider { background: #fff3cd; color: #856404; }
+        .badge-colab { background: #e9ecef; color: #495057; }
+        .badge-abierto { background: #d1e7dd; color: #0a3622; }
+        .badge-cerrado { background: #f8d7da; color: #842029; }
+        .empty-state { text-align: center; padding: 2rem; color: #adb5bd; font-size: 0.875rem; }
+
+        /* Asignaciones */
+        .asig-tag { display: inline-flex; align-items: center; gap: 5px; background: #e9f0ff; color: #3451b2; border-radius: 12px; padding: 2px 10px; font-size: 0.75rem; font-weight: 600; margin: 2px; }
+        .asig-tag button { background: none; border: none; color: #3451b2; cursor: pointer; font-size: 0.75rem; padding: 0; line-height: 1; }
+
+        #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+<div id="loading"><div class="spinner-border text-danger"></div></div>
+
+<div class="header-app">
+    <div class="container d-flex justify-content-between align-items-center">
+        <span class="brand-logo">Optimia · Configuración</span>
+        <button class="btn-back" onclick="goTo('home')">← Inicio</button>
+    </div>
+</div>
+
+<div class="container my-4">
+    <div class="cfg-tabs">
+        <button class="cfg-tab active" onclick="showTab('usuarios')">👤 Usuarios</button>
+        <button class="cfg-tab" onclick="showTab('proyectos')">📁 Proyectos</button>
+        <button class="cfg-tab" onclick="showTab('categorias')">🏷️ Categorías</button>
+        <button class="cfg-tab" onclick="showTab('asignaciones')">🔗 Asignaciones</button>
+    </div>
+
+    <!-- USUARIOS -->
+    <div id="tab-usuarios">
+        <div class="cfg-card">
+            <div class="cfg-card-title">
+                Usuarios registrados
+                <button class="btn btn-sm btn-danger fw-bold" onclick="abrirModal('usuario')">+ Nuevo usuario</button>
+            </div>
+            <table class="cfg-table">
+                <thead><tr><th>Email</th><th>Rol</th><th>Acciones</th></tr></thead>
+                <tbody id="tbl-usuarios"><tr><td colspan="3" class="empty-state">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- PROYECTOS -->
+    <div id="tab-proyectos" style="display:none">
+        <div class="cfg-card">
+            <div class="cfg-card-title">
+                Proyectos
+                <button class="btn btn-sm btn-danger fw-bold" onclick="abrirModal('proyecto')">+ Nuevo proyecto</button>
+            </div>
+            <table class="cfg-table">
+                <thead><tr><th>Nombre</th><th>Líder</th><th>Estado</th><th>Acciones</th></tr></thead>
+                <tbody id="tbl-proyectos"><tr><td colspan="4" class="empty-state">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- CATEGORÍAS -->
+    <div id="tab-categorias" style="display:none">
+        <div class="cfg-card">
+            <div class="cfg-card-title">
+                Categorías de avances
+                <button class="btn btn-sm btn-danger fw-bold" onclick="abrirModal('categoria')">+ Nueva categoría</button>
+            </div>
+            <table class="cfg-table">
+                <thead><tr><th>Nombre</th><th>Creado por</th><th>Fecha</th><th>Acciones</th></tr></thead>
+                <tbody id="tbl-categorias"><tr><td colspan="4" class="empty-state">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ASIGNACIONES -->
+    <div id="tab-asignaciones" style="display:none">
+        <div class="cfg-card">
+            <div class="cfg-card-title">Asignaciones de usuarios a proyectos</div>
+            <div id="asig-content"><p class="empty-state">Cargando...</p></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal fade" id="cfgModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--optimia-black);color:white;border-bottom:3px solid var(--optimia-red);">
+                <h6 class="modal-title fw-bold mb-0" id="modalTitle">—</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div id="modalBody"></div>
+                <button onclick="guardarModal()" class="btn btn-danger w-100 fw-bold mt-3" id="modalBtn">GUARDAR</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    var cfgData = {}, modal, currentModalType = '';
+
+    window.onload = () => {
+        modal = new bootstrap.Modal(document.getElementById('cfgModal'));
+        showL(true);
+        // Pequeño defer para asegurar que el contexto de Apps Script esté listo tras document.write()
+        setTimeout(() => {
+            google.script.run
+                .withSuccessHandler(res => {
+                    cfgData = res;
+                    renderUsuarios();
+                    renderProyectos();
+                    renderCategorias();
+                    renderAsignaciones();
+                    showL(false);
+                })
+                .withFailureHandler(err => {
+                    showL(false);
+                    alert('Error al cargar configuración: ' + err.message);
+                })
+                .cfgGetAll();
+        }, 100);
+    };
+
+    // ── Tabs ──
+    function showTab(tab) {
+        ['usuarios','proyectos','categorias','asignaciones'].forEach(t => {
+            document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
+        });
+        document.querySelectorAll('.cfg-tab').forEach((btn, i) => {
+            btn.classList.toggle('active', btn.innerText.includes(
+                {usuarios:'Usuarios', proyectos:'Proyectos', categorias:'Categorías', asignaciones:'Asignaciones'}[tab]
+            ));
+        });
+    }
+
+    // ── Renders ──
+    function renderUsuarios() {
+        const tbody = document.getElementById('tbl-usuarios');
+        if (!cfgData.usuarios.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-state">Sin usuarios registrados</td></tr>`; return; }
+        tbody.innerHTML = cfgData.usuarios.map(u => `
+            <tr>
+                <td>${u.email}</td>
+                <td><span class="badge-rol ${u.rol === 'Líder' ? 'badge-lider' : 'badge-colab'}">${u.rol}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="abrirModal('usuario', ${JSON.stringify(u).replace(/"/g,'&quot;')})">✏️ Editar</button>
+                </td>
+            </tr>`).join('');
+    }
+
+    function renderProyectos() {
+        const tbody = document.getElementById('tbl-proyectos');
+        if (!cfgData.proyectos.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Sin proyectos</td></tr>`; return; }
+        tbody.innerHTML = cfgData.proyectos.map(p => `
+            <tr>
+                <td><strong>${p.nombre}</strong></td>
+                <td>${p.lider}</td>
+                <td><span class="badge-rol ${p.estado === 'Cerrado' ? 'badge-cerrado' : 'badge-abierto'}">${p.estado || 'Abierto'}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="abrirModal('proyecto', ${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️ Editar</button>
+                </td>
+            </tr>`).join('');
+    }
+
+    function renderCategorias() {
+        const tbody = document.getElementById('tbl-categorias');
+        if (!cfgData.categorias.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Sin categorías</td></tr>`; return; }
+        tbody.innerHTML = cfgData.categorias.map(c => `
+            <tr>
+                <td><strong>${c.nombre}</strong></td>
+                <td>${c.creadoPor || '—'}</td>
+                <td>${c.fecha || '—'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="abrirModal('categoria', ${JSON.stringify(c).replace(/"/g,'&quot;')})">✏️ Editar</button>
+                </td>
+            </tr>`).join('');
+    }
+
+    function renderAsignaciones() {
+        const cont = document.getElementById('asig-content');
+        if (!cfgData.proyectos.length) { cont.innerHTML = '<p class="empty-state">Sin proyectos</p>'; return; }
+        let html = '';
+        cfgData.proyectos.forEach(p => {
+            const asigs = cfgData.asignaciones.filter(a => String(a.proyectoId) === String(p.id));
+            html += `<div class="mb-3 p-3" style="border:1px solid #dee2e6;border-radius:8px;">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>${p.nombre}</strong>
+                    <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="abrirAsignar('${p.id}','${p.nombre.replace(/'/g,"\\'")}')">+ Asignar usuario</button>
+                </div>
+                <div>`;
+            if (!asigs.length) {
+                html += `<span class="text-muted small">Sin usuarios asignados</span>`;
+            } else {
+                asigs.forEach(a => {
+                    html += `<span class="asig-tag">${a.email} <button onclick="quitarAsignacion('${a.proyectoId}','${a.email}')" title="Quitar">✕</button></span>`;
+                });
+            }
+            html += `</div></div>`;
+        });
+        cont.innerHTML = html;
+    }
+
+    // ── Modal CRUD ──
+    function abrirModal(tipo, item) {
+        currentModalType = tipo;
+        const isEdit = !!item;
+        const titles = { usuario: isEdit ? 'Editar Usuario' : 'Nuevo Usuario', proyecto: isEdit ? 'Editar Proyecto' : 'Nuevo Proyecto', categoria: isEdit ? 'Editar Categoría' : 'Nueva Categoría' };
+        document.getElementById('modalTitle').innerText = titles[tipo];
+        document.getElementById('modalBtn').innerText = isEdit ? 'GUARDAR CAMBIOS' : 'REGISTRAR';
+
+        let body = `<input type="hidden" id="mId" value="${item?.id || ''}">`;
+        if (tipo === 'usuario') {
+            body += `
+                <div class="mb-3"><label class="small fw-bold">Email</label>
+                <input id="mEmail" class="form-control" value="${item?.email || ''}" ${isEdit ? 'readonly' : ''}></div>
+                <div class="mb-2"><label class="small fw-bold">Rol</label>
+                <select id="mRol" class="form-select">
+                    <option value="Colaborador" ${item?.rol === 'Colaborador' ? 'selected' : ''}>Colaborador</option>
+                    <option value="Líder" ${item?.rol === 'Líder' ? 'selected' : ''}>Líder</option>
+                </select></div>`;
+        } else if (tipo === 'proyecto') {
+            body += `
+                <div class="mb-3"><label class="small fw-bold">Nombre</label>
+                <input id="mNombre" class="form-control" value="${item?.nombre || ''}" spellcheck="true"></div>
+                <div class="mb-3"><label class="small fw-bold">Email Líder</label>
+                <input id="mLider" class="form-control" value="${item?.lider || ''}"></div>
+                <div class="mb-2"><label class="small fw-bold">Estado</label>
+                <select id="mEstado" class="form-select">
+                    <option value="Abierto" ${(!item?.estado || item?.estado === 'Abierto') ? 'selected' : ''}>Abierto</option>
+                    <option value="Cerrado" ${item?.estado === 'Cerrado' ? 'selected' : ''}>Cerrado</option>
+                </select></div>`;
+        } else if (tipo === 'categoria') {
+            body += `
+                <div class="mb-2"><label class="small fw-bold">Nombre</label>
+                <input id="mNombreCat" class="form-control" value="${item?.nombre || ''}" spellcheck="true"></div>`;
+        }
+        document.getElementById('modalBody').innerHTML = body;
+        modal.show();
+    }
+
+    function guardarModal() {
+        showL(true);
+        const id = document.getElementById('mId').value;
+        const reload = res => { modal.hide(); showL(true); google.script.run.withSuccessHandler(res => { cfgData = res; renderUsuarios(); renderProyectos(); renderCategorias(); renderAsignaciones(); showL(false); }).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgGetAll(); };
+
+        if (currentModalType === 'asignacion') {
+            const email = document.getElementById('mUserAsig').value;
+            google.script.run
+                .withSuccessHandler(res => { modal.hide(); cfgData = res; renderAsignaciones(); showL(false); })
+                .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+                .cfgAgregarAsignacion(id, email);
+        } else if (currentModalType === 'usuario') {
+            const email = document.getElementById('mEmail').value.trim();
+            const rol   = document.getElementById('mRol').value;
+            if (!email) { alert('El email es obligatorio'); showL(false); return; }
+            google.script.run.withSuccessHandler(reload).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgSaveUsuario({ id, email, rol });
+        } else if (currentModalType === 'proyecto') {
+            const nombre = document.getElementById('mNombre').value.trim();
+            const lider  = document.getElementById('mLider').value.trim();
+            const estado = document.getElementById('mEstado').value;
+            if (!nombre || !lider) { alert('Nombre y líder son obligatorios'); showL(false); return; }
+            google.script.run.withSuccessHandler(reload).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgSaveProyecto({ id, nombre, lider, estado });
+        } else if (currentModalType === 'categoria') {
+            const nombre = document.getElementById('mNombreCat').value.trim();
+            if (!nombre) { alert('El nombre es obligatorio'); showL(false); return; }
+            google.script.run.withSuccessHandler(reload).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgSaveCategoria({ id, nombre });
+        }
+    }
+
+    // ── Asignaciones ──
+    function abrirAsignar(proyectoId, proyectoNombre) {
+        currentModalType = 'asignacion';
+        document.getElementById('modalTitle').innerText = `Asignar usuario · ${proyectoNombre}`;
+        document.getElementById('modalBtn').innerText = 'ASIGNAR';
+        const opts = cfgData.usuarios.map(u => `<option value="${u.email}">${u.email} (${u.rol})</option>`).join('');
+        document.getElementById('modalBody').innerHTML = `
+            <input type="hidden" id="mId" value="${proyectoId}">
+            <div class="mb-2"><label class="small fw-bold">Usuario</label>
+            <select id="mUserAsig" class="form-select">${opts}</select></div>`;
+        modal.show();
+    }
+
+    function quitarAsignacion(proyectoId, email) {
+        if (!confirm(`¿Quitar a ${email} del proyecto?`)) return;
+        showL(true);
+        google.script.run
+            .withSuccessHandler(res => { cfgData = res; renderAsignaciones(); showL(false); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .cfgQuitarAsignacion(proyectoId, email);
+    }
+
+    // ── Navegación ──
+    function goTo(vista) {
+        showL(true);
+        google.script.run
+            .withSuccessHandler(html => { document.open(); document.write(html); document.close(); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .getView(vista);
+    }
+
+    function showL(s) { document.getElementById('loading').style.display = s ? 'flex' : 'none'; }
+</script>
+</body>
+</html>

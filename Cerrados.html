@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --optimia-black: #2D2926;
+            --optimia-red:   #A6192E;
+            --optimia-gray:  #f4f4f4;
+            --timia-dark:    #2D2926;
+            --timia-header:  #6B2C3E;   /* burdeos cabecera tabla */
+            --timia-sub:     #3D3D3D;   /* negro oscuro etiquetas avance */
+            --timia-teal:    #1F9EA0;   /* barras gantt */
+            --timia-sem:     #8B1A2E;   /* encabezado semanas */
+            --timia-green:   #4CAF50;
+            --timia-red-dif: #c0392b;
+        }
+        * { box-sizing: border-box; }
+        body { background: #ececec; font-family: 'Inter', sans-serif; overflow-x: hidden; width: 100vw; margin:0; padding:0; }
+
+        /* ── Header app ── */
+        .header-app { background: var(--timia-dark); border-bottom: 4px solid var(--optimia-red); padding: 0.7rem 0; color: white; }
+        .brand-logo  { font-size: 1.4rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-back    { font-size: 0.75rem; padding: 4px 10px; border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 4px; background: transparent; cursor: pointer; font-weight: 600; }
+        .btn-back:hover { background: rgba(255,255,255,0.1); }
+
+        /* ── Loading ── */
+        #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }
+
+        /* ── Lista proyectos cerrados ── */
+        .proj-card { background: white; border: 1px solid #dee2e6; border-left: 5px solid var(--timia-dark); border-radius: 6px; padding: 14px 18px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; transition: box-shadow 0.15s; }
+        .proj-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.12); border-left-color: var(--optimia-red); }
+        .proj-card-name { font-weight: 700; font-size: 0.95rem; color: var(--timia-dark); }
+        .proj-card-meta { font-size: 0.72rem; color: #6c757d; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .proj-card-tag  { background: #f1f3f5; border-radius: 3px; padding: 1px 7px; font-size: 0.68rem; font-weight: 600; color: var(--timia-dark); }
+        .badge-closed   { background: var(--timia-dark); color: white; font-size: 0.6rem; padding: 3px 8px; border-radius: 4px; font-weight: 800; white-space: nowrap; flex-shrink: 0; }
+        .section-title  { font-weight: 800; font-size: 1rem; color: var(--timia-dark); text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* ── Panel detalle ── */
+        .filter-card { background: #fff; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 15px; display: none; margin-bottom: 14px; }
+
+        /* ── Configuración/Seguimiento: cajas estilo original ── */
+        .level-2-box   { background: white; border: 1px solid #dee2e6; border-left: 5px solid var(--timia-header); margin-bottom: 6px; }
+        .level-2-title { padding: 10px 12px; font-weight: 600; font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center; gap: 10px; color: #1a1a1a; }
+        .actions-wrap  { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+        .level-3-list  { padding: 0; list-style: none; margin: 0; background: #fafafa; }
+        .level-3-item  { padding: 8px 12px 8px 28px; border-top: 1px solid #f0f0f0; font-size: 0.84rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; color: #333; }
+        .badge-opt  { font-size: 0.62rem; padding: 3px 7px; border-radius: 3px; font-weight: 800; white-space: nowrap; }
+        .st-done    { background: var(--optimia-red); color: white; }
+        .st-process { background: #e9ecef; color: var(--timia-dark); }
+        .st-block   { background: var(--timia-dark); color: white; }
+
+        /* ══════════════════════════════════════════
+           TABLA GESTIONAR — estilo TIMIA
+        ══════════════════════════════════════════ */
+
+        /* Contenedor con scroll horizontal */
+        .gantt-outer { overflow-x: auto; background: white; border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,0.10); }
+
+        /* Tabla principal */
+        .gantt-table { border-collapse: collapse; font-size: 0.76rem; table-layout: fixed; }
+        .gantt-table td, .gantt-table th { border: 1px solid #d4d4d4; vertical-align: middle; padding: 0; }
+
+        /* Columna fija etiqueta */
+        .gantt-label-col { width: 240px; min-width: 240px; max-width: 240px; }
+
+        /* Etiqueta subtarea — negro oscuro, texto blanco */
+        .gantt-st-label {
+            background: var(--timia-sub);
+            color: white;
+            font-weight: 700;
+            font-size: 0.75rem;
+            padding: 7px 10px;
+            white-space: normal;
+            line-height: 1.3;
+            vertical-align: middle;
+        }
+
+        /* Etiqueta avance — burdeos/vino, texto blanco */
+        .gantt-av-label {
+            background: var(--timia-header);
+            color: white;
+            font-weight: 600;
+            font-size: 0.72rem;
+            padding: 6px 10px 6px 14px;
+            white-space: normal;
+            line-height: 1.3;
+            vertical-align: middle;
+        }
+
+        /* Columna % avance — junto a la etiqueta */
+        .gantt-pct-cell {
+            width: 52px; min-width: 52px; max-width: 52px;
+            text-align: center;
+            font-weight: 800;
+            font-size: 0.78rem;
+            padding: 4px 2px;
+            background: #e8e8e8;
+            color: #222;
+            border-left: none;
+        }
+        .gantt-pct-cell.pct-done   { background: #2D2926; color: white; }
+        .gantt-pct-cell.pct-high   { background: #4CAF50; color: white; }
+        .gantt-pct-cell.pct-mid    { background: #f59e0b; color: white; }
+        .gantt-pct-cell.pct-zero   { background: #9e9e9e; color: white; }
+
+        /* Cabecera semanas */
+        .gantt-sem-th {
+            background: var(--timia-sem);
+            color: white;
+            font-weight: 800;
+            font-size: 0.68rem;
+            text-align: center;
+            padding: 5px 2px;
+            width: 56px; min-width: 56px;
+            white-space: nowrap;
+            border-color: #a01525;
+        }
+        .gantt-sem-th.sem-selected { background: #5b2d4e !important; }
+
+        /* Cabecera col etiqueta */
+        .gantt-label-th {
+            background: var(--timia-header);
+            color: white;
+            font-weight: 700;
+            font-size: 0.73rem;
+            text-align: center;
+            padding: 8px 6px;
+        }
+        .gantt-pct-th {
+            background: var(--timia-header);
+            color: white;
+            font-weight: 700;
+            font-size: 0.68rem;
+            text-align: center;
+            padding: 8px 2px;
+            width: 52px;
+        }
+
+        /* Celda de semana vacía */
+        .gantt-cell-empty  { background: #ffffff; }
+        .gantt-cell-stripe { background: #f8f8f8; }
+
+        /* Barra teal de actividad en Gantt */
+        .gantt-cell-bar {
+            background: var(--timia-teal);
+            position: relative;
+        }
+
+        /* Celdas interactivas (modo gestionar) */
+        .gantt-cell-active { background: #e8f7f7; }
+        .gantt-btn-gest {
+            font-size: 0.6rem; padding: 1px 5px; border-radius: 3px;
+            border: 1px solid #9ca3af; background: #e5e7eb;
+            color: #374151; cursor: pointer; white-space: nowrap;
+            display: block; margin: 2px auto;
+        }
+        .gantt-btn-gest:hover { background: #d1d5db; }
+        .gantt-reg-pct   { font-size: 0.78rem; font-weight: 800; color: #1a1a1a; text-align:center; }
+        .gantt-alert-lnk { font-size: 0.6rem; color: var(--optimia-red); cursor:pointer; text-decoration:underline; display:block; text-align:center; }
+
+        /* Separador entre subtareas */
+        .gantt-spacer td { height: 5px; background: #e0e0e0; border: none; padding: 0; }
+
+        /* ── Tarjeta resumen TIMIA ── */
+        .resumen-wrap {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 10px;
+        }
+        .resumen-box {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            overflow: hidden;
+            min-width: 320px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+            background: white;
+        }
+        .resumen-box-title {
+            background: #f5f5f5;
+            text-align: right;
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: #555;
+            padding: 4px 10px;
+            border-bottom: 1px solid #ddd;
+            letter-spacing: 0.3px;
+        }
+        .resumen-cols {
+            display: flex;
+        }
+        .resumen-col {
+            flex: 1;
+            text-align: center;
+            padding: 8px 10px 10px;
+            border-right: 1px solid #ddd;
+        }
+        .resumen-col:last-child { border-right: none; }
+        .resumen-col-label {
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #666;
+            text-transform: none;
+            margin-bottom: 5px;
+        }
+        .resumen-val {
+            font-size: 1.15rem;
+            font-weight: 800;
+            border-radius: 4px;
+            padding: 4px 10px;
+            display: inline-block;
+            min-width: 72px;
+        }
+        .rv-real     { background: #5a5a5a; color: white; }
+        .rv-esperado { background: #7B3F5E; color: white; }
+        .rv-dif-pos  { background: #4CAF50; color: white; }
+        .rv-dif-neg  { background: var(--optimia-red); color: white; }
+        .rv-dif-neu  { background: #9e9e9e; color: white; }
+
+        /* ── Título proyecto en vista gestionar ── */
+        .gantt-proj-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--timia-header);
+            margin-bottom: 14px;
+            margin-top: 4px;
+            letter-spacing: -0.3px;
+        }
+
+        /* ── Leyenda ── */
+        .gantt-legend {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 0.7rem;
+            color: #555;
+            flex-wrap: wrap;
+        }
+        .legend-dot {
+            width: 14px; height: 10px; border-radius: 2px;
+            display: inline-block; margin-right: 4px; vertical-align: middle;
+        }
+
+        /* ── Cronograma Gantt (modal) — mismo estilo TIMIA ── */
+        .crono-wrapper { overflow-x: auto; }
+        .crono-table { border-collapse: collapse; width: 100%; min-width: 500px; font-size: 0.75rem; }
+        .crono-table th, .crono-table td { border: 1px solid #d4d4d4; padding: 5px 6px; }
+        .crono-subtarea-label { background: var(--timia-sub); color: white; font-weight: 700; min-width: 200px; max-width: 260px; white-space: normal; padding: 7px 10px; }
+        .crono-avance-label   { background: var(--timia-header); color: white; font-weight: 500; min-width: 200px; max-width: 260px; white-space: normal; padding: 6px 10px 6px 16px; }
+        .crono-sem-header  { background: var(--timia-sem); color: white; font-weight: 800; text-align: center; min-width: 44px; font-size: 0.68rem; }
+        .crono-cell-active { background: var(--timia-teal); }
+        .crono-cell-empty  { background: #ffffff; }
+        .crono-section-spacer td { background: #e8e8e8; height: 5px; border: none; padding: 0; }
+        .crono-sem-highlight { background: rgba(166,25,46,0.12) !important; }
+
+        /* ── Modal Avance General ── */
+        .ag-title {
+            font-size: 1.05rem; font-weight: 800; text-align: center;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            color: var(--timia-dark); margin-bottom: 14px;
+        }
+        .ag-resumen-wrap {
+            display: flex; justify-content: center; margin-bottom: 18px;
+        }
+        .ag-resumen-box {
+            border: 1px solid #ccc; border-radius: 4px; overflow: hidden;
+            min-width: 300px; box-shadow: 0 1px 6px rgba(0,0,0,0.10); background: white;
+        }
+        .ag-resumen-cols { display: flex; }
+        .ag-resumen-col {
+            flex: 1; text-align: center; padding: 8px 10px 10px;
+            border-right: 1px solid #ddd;
+        }
+        .ag-resumen-col:last-child { border-right: none; }
+        .ag-col-label { font-size: 0.65rem; font-weight: 600; color: #555; margin-bottom: 5px; }
+        .ag-val {
+            font-size: 1.1rem; font-weight: 800; border-radius: 4px;
+            padding: 4px 10px; display: inline-block; min-width: 68px;
+        }
+        .ag-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+        .ag-table th { background: var(--timia-header); color: white; font-weight: 700; padding: 9px 14px; }
+        .ag-table td { padding: 9px 14px; border-bottom: 1px solid #e5e5e5; vertical-align: middle; }
+        .ag-table tr:last-child td { border-bottom: none; }
+        .ag-table tr:hover td { background: #fdf5f7; }
+        .ag-subtarea-link { color: var(--timia-header); font-weight: 600; cursor: default; }
+        .ag-pct-badge {
+            display: inline-block; min-width: 54px; text-align: center;
+            font-weight: 800; font-size: 0.82rem; border-radius: 4px;
+            padding: 3px 8px;
+        }
+        .ag-pct-done   { background: #2D2926; color: white; }
+        .ag-pct-high   { background: #4CAF50; color: white; }
+        .ag-pct-mid    { background: #f59e0b; color: white; }
+        .ag-pct-zero   { background: #9e9e9e; color: white; }
+
+        /* ── Alertas y bloqueantes en Avance General ── */
+        .ag-section-title { font-size: 1rem; font-weight: 800; margin: 18px 0 8px; display: flex; align-items: center; gap: 6px; }
+        .ag-section-title.alertas  { color: #b45309; }
+        .ag-section-title.bloqueos { color: var(--optimia-red); }
+        .ag-alert-item { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.82rem; }
+        .ag-bloqueo-item { background: #fff5f5; border-left: 4px solid var(--optimia-red); border-radius: 4px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.82rem; }
+        .ag-item-sem { font-size: 0.68rem; font-weight: 700; color: #888; margin-bottom: 2px; text-transform: uppercase; }
+        .ag-item-av  { font-size: 0.7rem; color: #555; margin-bottom: 2px; font-style: italic; }
+        .ag-item-txt { color: #333; }
+    </style>
+</head>
+<body spellcheck="true">
+
+<div id="loading"><div class="spinner-border text-danger"></div></div>
+
+<!-- HEADER -->
+<div class="header-app">
+    <div class="container d-flex justify-content-between align-items-center">
+        <span class="brand-logo">Optimia</span>
+        <div class="d-flex gap-2 align-items-center">
+            <span id="headerSubtitle" class="text-white-50 small me-2"></span>
+            <button id="btnVolverLista" class="btn-back" style="display:none" onclick="volverALista()">← Proyectos</button>
+            <button class="btn-back" onclick="goHome()">← INICIO</button>
+        </div>
+    </div>
+</div>
+
+<!-- PANEL: Lista de proyectos cerrados -->
+<div id="panelLista">
+    <div class="container my-3">
+        <div class="d-flex justify-content-between align-items-center mb-3" style="border-bottom: 2px solid var(--optimia-red); padding-bottom: 6px;">
+            <span class="section-title">🗄️ Proyectos Cerrados</span>
+            <button id="btnNuevoCerrado" class="btn btn-sm btn-dark fw-bold" style="display:none" onclick="abrirModalNuevoProyecto()">+ PROYECTO CERRADO</button>
+        </div>
+        <div id="listaCerrados"><div class="text-center py-5 text-muted">Cargando...</div></div>
+    </div>
+</div>
+
+<!-- PANEL: Detalle / gestión del proyecto cerrado seleccionado -->
+<div id="panelDetalle" style="display:none">
+    <div class="container my-3">
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+            <button class="btn btn-sm btn-dark px-4 fw-bold"         id="btnGest" onclick="changeTab('gestion')">CONFIGURACIÓN DE CRONOGRAMA</button>
+            <button class="btn btn-sm btn-outline-dark px-4 fw-bold"  id="btnGestProj" onclick="changeTab('gestionar')">GESTIONAR PROYECTO</button>
+            <button id="btnAvanceGeneral" class="btn btn-sm fw-bold ms-auto" style="background:#8B1A2E;color:white;display:none" onclick="abrirAvanceGeneral()">📊 AVANCE GENERAL</button>
+            <button id="btnNewSubtarea" class="btn btn-sm btn-outline-primary fw-bold" style="display:none" onclick="cAbrirModal('Subtarea','','')">+ Nueva Subtarea</button>
+            <button id="btnCronoGest"   class="btn btn-sm fw-bold" style="background:#7B3F5E; color:white; display:none" onclick="abrirCronograma(false)">📊 VER CRONOGRAMA</button>
+        </div>
+        <div id="filterGestionar" class="filter-card" style="display:none;">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-5">
+                    <label class="small fw-bold">Ver avance hasta la semana</label>
+                    <select id="selSemGestionar" class="form-select form-select-sm" onchange="renderGestionar()">
+                        <option value="">-- Todas las semanas --</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <span class="small text-muted">El % de avance se calcula acumulado hasta la semana seleccionada</span>
+                </div>
+            </div>
+        </div>
+        <div id="mainUI"></div>
+    </div>
+</div>
+
+<!-- MODAL: Nuevo proyecto cerrado -->
+<div class="modal fade" id="modalNuevoProyecto" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body p-4">
+    <h6 class="fw-bold mb-3 border-bottom pb-2">🗄️ Nuevo Proyecto Cerrado</h6>
+    <div class="mb-2">
+        <label class="small fw-bold">Nombre del Proyecto</label>
+        <input type="text" id="cpNombre" class="form-control form-control-sm" spellcheck="true" placeholder="Ej: Rediseño Portal Web">
+    </div>
+    <div class="mb-2">
+        <label class="small fw-bold">SDA <span class="text-muted fw-normal">(Sistema / Dependencia / Área)</span></label>
+        <input type="text" id="cpSDA" class="form-control form-control-sm" spellcheck="true" placeholder="Ej: Gerencia de TI">
+    </div>
+    <div class="mb-3">
+        <label class="small fw-bold">Duración <span class="text-muted fw-normal">(semanas)</span></label>
+        <input type="number" id="cpDuracion" class="form-control form-control-sm" min="1" placeholder="Ej: 12">
+    </div>
+    <button onclick="cGuardarNuevoProyecto()" class="btn btn-dark w-100 fw-bold">GUARDAR PROYECTO</button>
+</div></div></div></div>
+
+<!-- MODAL: Subtarea / Avance (cerrados) — NO hay nivel Tarea -->
+<div class="modal fade" id="cEntryModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body p-4">
+    <h6 class="fw-bold mb-1 border-bottom pb-2" id="cModalTitle">Registro de Actividad</h6>
+    <p class="small text-muted mb-3" id="cModalSubtitle"></p>
+    <input type="hidden" id="cFId">
+    <input type="hidden" id="cFType">
+    <input type="hidden" id="cFParent">
+    <div class="mb-2"><label class="small fw-bold">Responsable</label><select id="cFOwner" class="form-select form-select-sm"></select></div>
+    <div class="mb-2"><label class="small fw-bold">Descripción</label><textarea id="cFDesc" class="form-control form-control-sm" rows="3" spellcheck="true"></textarea></div>
+
+    <!-- Semanas: para Avance -->
+    <div id="cCampoSemanas" class="row g-2 mb-2" style="display:none">
+        <div class="col-6">
+            <label class="small fw-bold">Semana Inicio</label>
+            <select id="cFSemIni" class="form-select form-select-sm" onchange="cValidarSemanas()"></select>
+        </div>
+        <div class="col-6">
+            <label class="small fw-bold">Semana Fin</label>
+            <select id="cFSemFin" class="form-select form-select-sm" onchange="cValidarSemanas()"></select>
+        </div>
+        <div id="cSemanaError" class="col-12" style="display:none">
+            <span class="text-danger small fw-bold">⚠️ La semana de fin no puede ser menor a la de inicio.</span>
+        </div>
+    </div>
+
+    <div class="mb-3"><label class="small fw-bold">Estado</label>
+        <select id="cFEst" class="form-select form-select-sm">
+            <option value="En proceso">En proceso</option>
+            <option value="Terminada">Terminada</option>
+            <option value="Bloqueada">Bloqueada</option>
+        </select>
+    </div>
+    <button onclick="cGuardarEntrada()" class="btn btn-danger w-100 fw-bold" id="cModalBtn">GUARDAR</button>
+</div></div></div></div>
+
+<!-- MODAL: Cronograma / Gantt -->
+<div class="modal fade" id="cronogramaModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#2D2926; color:white; border-bottom:3px solid #A6192E;">
+                <h6 class="modal-title fw-bold mb-0">📊 Cronograma — <span id="cronoTitulo"></span></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="crono-wrapper" id="cronoContenido">
+                    <div class="text-center py-4 text-muted">Generando cronograma...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Avance General del Proyecto -->
+<div class="modal fade" id="modalAvanceGeneral" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#2D2926; color:white; border-bottom:3px solid #A6192E;">
+                <h6 class="modal-title fw-bold mb-0">📊 Avance General — <span id="agProyNombre"></span></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="agBody">
+                <div class="text-center py-4 text-muted">Calculando...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Registrar gestión de semana (% avance, alerta, bloqueante) -->
+<div class="modal fade" id="modalGestionCelda" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body p-4">
+                <h6 class="fw-bold mb-1 border-bottom pb-2" id="gCeldaTitulo">Gestionar Semana</h6>
+                <p class="small text-muted mb-2" id="gCeldaSubtitulo"></p>
+                <input type="hidden" id="gCeldaAvanceId">
+                <input type="hidden" id="gCeldaSemana">
+                <input type="hidden" id="gCeldaDurAv">
+
+                <div class="mb-2">
+                    <label class="small fw-bold">% Avance de la semana</label>
+                    <div class="input-group input-group-sm">
+                        <input type="number" id="gCeldaPct" class="form-control form-control-sm" min="0" max="100" placeholder="0 – 100">
+                        <span class="input-group-text">%</span>
+                    </div>
+                    <div id="gCeldaMaxInfo" class="small text-muted mt-1" style="font-size:0.7rem;"></div>
+                </div>
+                <div id="gCeldaHeredadoInfo" class="alert alert-info py-2 px-3 mb-2" style="display:none; font-size:0.75rem;">
+                    ℹ️ <strong>Alertas/bloqueantes pre-cargados</strong> de la semana anterior. Edítalos o bórralos según el estado actual.
+                </div>
+                <div class="mb-2">
+                    <label class="small fw-bold">Alerta <span class="text-muted fw-normal">(opcional)</span></label>
+                    <textarea id="gCeldaAlerta" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Describe la alerta si existe..."></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="small fw-bold">Bloqueante <span class="text-muted fw-normal">(opcional)</span></label>
+                    <textarea id="gCeldaBloqueante" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Describe el bloqueante si existe..."></textarea>
+                </div>
+                <button onclick="guardarGestionCelda()" class="btn btn-danger w-100 fw-bold">GUARDAR</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Ver alertas y bloqueantes de una celda -->
+<div class="modal fade" id="modalDetalleGestion" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#2D2926;color:white;border-bottom:3px solid #A6192E;">
+                <h6 class="modal-title fw-bold mb-0" id="gDetalleTitulo">Detalle de Gestión</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="gDetalleBody"></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // ══ Estado global de cerrados ══
+    var cUserList = [], cCurrentEmail = "", cUserRole = "";
+    var cRawData = [];
+    var cCurrentTab = 'gestion';
+    var cProyectoActivo = null; // { id, nombre, sda, duracion }
+    var mNuevoProyecto, mCEntry, mCronograma, mGestionCelda, mDetalleGestion, mAvanceGeneral;
+
+    // ══ INIT ══
+    window.onload = () => {
+        mNuevoProyecto  = new bootstrap.Modal(document.getElementById('modalNuevoProyecto'));
+        mCEntry         = new bootstrap.Modal(document.getElementById('cEntryModal'));
+        mCronograma     = new bootstrap.Modal(document.getElementById('cronogramaModal'));
+        mGestionCelda   = new bootstrap.Modal(document.getElementById('modalGestionCelda'));
+        mDetalleGestion = new bootstrap.Modal(document.getElementById('modalDetalleGestion'));
+        mAvanceGeneral  = new bootstrap.Modal(document.getElementById('modalAvanceGeneral'));
+        showL(true);
+
+        google.script.run.withSuccessHandler(res => {
+            cCurrentEmail = res.email.toLowerCase();
+            cUserRole     = res.role;
+            cUserList     = res.userList;
+
+            // Poblar select de responsable en modal
+            const selFO = document.getElementById('cFOwner');
+            res.userList.forEach(u => selFO.add(new Option(u, u)));
+
+            // Botón nuevo proyecto solo para Líder
+            if (res.role === 'Líder') {
+                document.getElementById('btnNuevoCerrado').style.display = 'block';
+            }
+
+            cCargarLista();
+        }).getAppData();
+    };
+
+    // ══ NAVEGACIÓN ══
+    function goHome() {
+        showL(true);
+        google.script.run
+            .withSuccessHandler(html => { document.open(); document.write(html); document.close(); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .getView('home');
+    }
+
+    function volverALista() {
+        cProyectoActivo = null;
+        cRawData = [];
+        document.getElementById('panelLista').style.display   = 'block';
+        document.getElementById('panelDetalle').style.display = 'none';
+        document.getElementById('btnVolverLista').style.display = 'none';
+        document.getElementById('headerSubtitle').innerText = '';
+        cCargarLista();
+    }
+
+    function abrirDetalle(proj) {
+        cProyectoActivo = proj;
+        document.getElementById('panelLista').style.display   = 'none';
+        document.getElementById('panelDetalle').style.display = 'block';
+        document.getElementById('btnVolverLista').style.display = 'block';
+        document.getElementById('headerSubtitle').innerText = proj.nombre;
+
+        // Reset tab a configuración (gestion)
+        cCurrentTab = 'gestion';
+        document.getElementById('btnGest').className    = 'btn btn-sm btn-dark px-4 fw-bold';
+        document.getElementById('btnGestProj').className = 'btn btn-sm btn-outline-dark px-4 fw-bold';
+        document.getElementById('filterGestionar').style.display  = 'none';
+        document.getElementById('btnNewSubtarea').style.display  = 'block';
+        document.getElementById('btnCronoGest').style.display    = 'block';
+        document.getElementById('btnAvanceGeneral').style.display = 'block';
+
+        // Poblar select de semanas del filtro gestionar
+        const selSemG = document.getElementById('selSemGestionar');
+        selSemG.innerHTML = '<option value="">-- Todas las semanas --</option>';
+        const total = parseInt(proj.duracion) || 1;
+        for (let i = 1; i <= total; i++) selSemG.add(new Option('Semana ' + i, i));
+
+        cCargarDatos();
+    }
+
+    // ══ LISTA DE PROYECTOS CERRADOS ══
+    function cCargarLista() {
+        showL(true);
+        document.getElementById('listaCerrados').innerHTML = "<div class='text-center py-5 text-muted'>Cargando proyectos...</div>";
+        google.script.run.withSuccessHandler(projects => {
+            const cont = document.getElementById('listaCerrados');
+            if (!projects || projects.length === 0) {
+                cont.innerHTML = "<div class='text-center py-5 text-muted'>No hay proyectos cerrados registrados.</div>";
+            } else {
+                cont.innerHTML = '';
+                projects.forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'proj-card';
+                    div.innerHTML = `
+                        <div style="flex:1;min-width:0;">
+                            <div class="proj-card-name">${p.nombre}</div>
+                            <div class="proj-card-meta">
+                                ${p.sda      ? `<span class="proj-card-tag">📁 ${p.sda}</span>`          : ''}
+                                ${p.duracion ? `<span class="proj-card-tag">⏱ ${p.duracion} sem.</span>` : ''}
+                                ${p.lider    ? `<span class="proj-card-tag">👤 ${p.lider}</span>`         : ''}
+                            </div>
+                        </div>
+                        <span class="badge-closed">CERRADO</span>`;
+                    div.onclick = () => abrirDetalle(p);
+                    cont.appendChild(div);
+                });
+            }
+            showL(false);
+        }).cObtenerProyectosCerrados();
+    }
+
+    // ══ NUEVO PROYECTO CERRADO ══
+    function abrirModalNuevoProyecto() {
+        document.getElementById('cpNombre').value   = '';
+        document.getElementById('cpSDA').value      = '';
+        document.getElementById('cpDuracion').value = '';
+        mNuevoProyecto.show();
+    }
+
+    function cGuardarNuevoProyecto() {
+        const nombre   = document.getElementById('cpNombre').value.trim();
+        const sda      = document.getElementById('cpSDA').value.trim();
+        const duracion = document.getElementById('cpDuracion').value.trim();
+        if (!nombre)                                               { alert('⚠️ El nombre es obligatorio.'); return; }
+        if (!sda)                                                  { alert('⚠️ El campo SDA es obligatorio.'); return; }
+        if (!duracion || isNaN(duracion) || Number(duracion) < 1) { alert('⚠️ Ingresa una duración válida en semanas.'); return; }
+        showL(true);
+        google.script.run
+            .withSuccessHandler(() => { mNuevoProyecto.hide(); cCargarLista(); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .cCrearProyectoCerrado(nombre, sda, Number(duracion), cCurrentEmail);
+    }
+
+    // ══ CARGA DE DATOS DEL PROYECTO ACTIVO ══
+    function cCargarDatos() {
+        if (!cProyectoActivo) return;
+        showL(true);
+        google.script.run.withSuccessHandler(data => {
+            cRawData = data;
+            cargarGestionData();
+            if (cCurrentTab === 'gestionar') renderGestionar();
+            else cRenderUI();
+            showL(false);
+        }).cFetchEntradas(cProyectoActivo.nombre, cProyectoActivo.id);
+    }
+
+    // ══ TABS ══
+    function changeTab(t) {
+        cCurrentTab = t;
+        document.getElementById('btnGest').className     = t==='gestion'  ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
+        document.getElementById('btnGestProj').className = t==='gestionar' ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
+
+        document.getElementById('filterGestionar').style.display = t==='gestionar' ? 'block' : 'none';
+        document.getElementById('btnNewSubtarea').style.display  = t==='gestion'   ? 'block' : 'none';
+        document.getElementById('btnCronoGest').style.display    = t==='gestion'   ? 'block' : 'none';
+        document.getElementById('btnAvanceGeneral').style.display = 'block';
+
+        if (t === 'gestionar') renderGestionar();
+        else cRenderUI();
+    }
+
+    // ══ RENDER UI — CONFIGURACIÓN DE CRONOGRAMA (Subtarea → Avances) ══
+    function cRenderUI() {
+        const cont = document.getElementById('mainUI'); cont.innerHTML = '';
+
+        const subtareas = cRawData.filter(e => e.tipo === 'Subtarea');
+        if (!subtareas.length) {
+            cont.innerHTML = "<div class='text-center py-5 text-muted'>Sin información para mostrar.</div>";
+            return;
+        }
+
+        let hasVisible = false;
+
+        subtareas.forEach(st => {
+            if (st.estado === 'Terminada') return;
+
+            const avs = cRawData.filter(av => av.tipo === 'Avance' && av.parentId === st.id && av.estado !== 'Terminada');
+
+            hasVisible = true;
+            const box = document.createElement('div'); box.className = 'level-2-box';
+            let html = `<div class="level-2-title"><span>${st.desc}</span><div class="actions-wrap">`;
+            if (st.owner === cCurrentEmail) html += `<button class="btn btn-sm p-0 text-muted" onclick="cEditarEntrada('${st.id}')">✏️</button>`;
+            html += `<button class="btn btn-danger btn-sm px-2" style="height:22px;font-size:10px;white-space:nowrap" onclick="cAbrirModal('Avance','${st.id}','')">+ Avance</button>`;
+            html += `</div></div>`;
+
+            if (avs.length > 0) {
+                html += `<div class="level-3-list">`;
+                avs.forEach(av => {
+                    const stC = av.estado === 'Bloqueada' ? 'st-block' : 'st-process';
+                    const semLabel = (av.semanaInicio && av.semanaFin)
+                        ? ` <span class="small text-muted">[Sem. ${av.semanaInicio} → Sem. ${av.semanaFin}]</span>` : '';
+                    html += `<div class="level-3-item"><span>${av.desc}${semLabel}</span>
+                        <div class="actions-wrap"><span class="badge-opt ${stC}">${av.estado}</span>`;
+                    if (av.owner === cCurrentEmail) html += `<button class="btn btn-sm p-0 text-muted" onclick="cEditarEntrada('${av.id}')">✏️</button>`;
+                    html += `</div></div>`;
+                });
+                html += `</div>`;
+            }
+
+            box.innerHTML = html;
+            cont.appendChild(box);
+        });
+
+        if (!hasVisible) cont.innerHTML = "<div class='text-center py-5 text-muted'>Sin información para mostrar.</div>";
+    }
+
+    // ══ MODAL ENTRADA ══
+    function cPoblarSelectSemanas(totalSemanas, semIni, semFin) {
+        const selIni = document.getElementById('cFSemIni');
+        const selFin = document.getElementById('cFSemFin');
+        selIni.innerHTML = '';
+        selFin.innerHTML = '';
+        for (let i = 1; i <= totalSemanas; i++) {
+            selIni.add(new Option('Semana ' + i, i));
+            selFin.add(new Option('Semana ' + i, i));
+        }
+        selIni.value = semIni || 1;
+        selFin.value = semFin || 1;
+        document.getElementById('cSemanaError').style.display = 'none';
+    }
+
+    function cValidarSemanas() {
+        const ini = parseInt(document.getElementById('cFSemIni').value);
+        const fin = parseInt(document.getElementById('cFSemFin').value);
+        document.getElementById('cSemanaError').style.display = (fin < ini) ? 'block' : 'none';
+    }
+
+    function cAbrirModal(tipo, parentId, id, desc='', semIni='', semFin='', est='En proceso', owner='') {
+        const isEdit  = id !== '';
+        const label   = tipo === 'Avance' ? 'Avance' : 'Subtarea';
+        document.getElementById('cModalTitle').innerText    = isEdit ? `Modificar ${label}` : `Nuevo ${label}`;
+        document.getElementById('cModalSubtitle').innerText = isEdit
+            ? `Estás editando un ${label.toLowerCase()} existente`
+            : `Completa los datos para registrar el nuevo ${label.toLowerCase()}`;
+        document.getElementById('cModalBtn').innerText      = isEdit ? 'GUARDAR CAMBIOS' : `REGISTRAR ${label.toUpperCase()}`;
+
+        document.getElementById('cFId').value     = id;
+        document.getElementById('cFType').value   = tipo;
+        document.getElementById('cFParent').value = parentId;
+        document.getElementById('cFDesc').value   = desc;
+        document.getElementById('cFEst').value    = est;
+
+        // Avance: mostrar selector semanas | Subtarea: solo desc + estado
+        const esAvance = tipo === 'Avance';
+        document.getElementById('cCampoSemanas').style.display = esAvance ? 'flex' : 'none';
+
+        if (esAvance) {
+            const total = parseInt(cProyectoActivo.duracion) || 1;
+            cPoblarSelectSemanas(total, semIni, semFin);
+        }
+
+        const selOwner = document.getElementById('cFOwner');
+        if (cUserRole === 'Líder') {
+            selOwner.disabled = false;
+            selOwner.value = owner || cCurrentEmail;
+        } else {
+            selOwner.value    = cCurrentEmail;
+            selOwner.disabled = true;
+        }
+        mCEntry.show();
+    }
+
+    function cEditarEntrada(id) {
+        const it = cRawData.find(e => e.id === id);
+        if (!it) return;
+        if (it.tipo === 'Avance') {
+            cAbrirModal(it.tipo, it.parentId, it.id, it.desc, it.semanaInicio, it.semanaFin, it.estado, it.owner);
+        } else {
+            // Subtarea
+            cAbrirModal(it.tipo, it.parentId, it.id, it.desc, '', '', it.estado, it.owner);
+        }
+    }
+
+    function cGuardarEntrada() {
+        const tipo = document.getElementById('cFType').value;
+        const est  = document.getElementById('cFEst').value;
+        let semanaInicio = '', semanaFin = '';
+
+        if (tipo === 'Avance') {
+            semanaInicio = parseInt(document.getElementById('cFSemIni').value);
+            semanaFin    = parseInt(document.getElementById('cFSemFin').value);
+            if (semanaFin < semanaInicio) {
+                alert('⚠️ La semana de fin no puede ser menor a la semana de inicio.');
+                return;
+            }
+        }
+
+        showL(true);
+        const data = {
+            userOwner:      document.getElementById('cFOwner').value,
+            projectId:      cProyectoActivo.id,
+            nombreProyecto: cProyectoActivo.nombre,
+            id:             document.getElementById('cFId').value,
+            tipo:           tipo,
+            parentId:       document.getElementById('cFParent').value,
+            desc:           document.getElementById('cFDesc').value,
+            fechaInicio:    '',
+            fechaFin:       '',
+            semanaInicio:   semanaInicio,
+            semanaFin:      semanaFin,
+            estado:         est
+        };
+        google.script.run
+            .withSuccessHandler(() => { mCEntry.hide(); cCargarDatos(); })
+            .cGuardarEntradaCerrado(data);
+    }
+
+    // ══ CRONOGRAMA GANTT ══
+    function abrirCronograma() {
+        if (!cProyectoActivo || !cRawData.length) {
+            alert('No hay datos para mostrar. Carga el proyecto primero.');
+            return;
+        }
+        document.getElementById('cronoTitulo').innerText = cProyectoActivo.nombre;
+        document.getElementById('cronoContenido').innerHTML = construirTablaGantt(0);
+        mCronograma.show();
+    }
+
+    function construirTablaGantt(semResaltada) {
+        const totalSem  = parseInt(cProyectoActivo.duracion) || 1;
+        const subtareas = cRawData.filter(e => e.tipo === 'Subtarea');
+
+        if (!subtareas.length) return "<div class='text-center py-4 text-muted'>No hay subtareas registradas en este proyecto.</div>";
+
+        let semHeaders = '';
+        for (let s = 1; s <= totalSem; s++) {
+            const hl = (semResaltada && s === semResaltada) ? ' crono-sem-highlight' : '';
+            semHeaders += `<th class="crono-sem-header${hl}">S${s}</th>`;
+        }
+
+        let html = `<table class="crono-table">
+            <tr>
+                <th style="background:#5b2d4e;color:white;font-weight:700;font-size:0.75rem;text-align:center;min-width:200px;">Actividades / Avance</th>
+                ${semHeaders}
+            </tr>`;
+
+        subtareas.forEach((st, i) => {
+            const avances = cRawData.filter(e => e.tipo === 'Avance' && e.parentId === st.id);
+
+            if (i > 0) html += `<tr class="crono-section-spacer"><td colspan="${1 + totalSem}"></td></tr>`;
+
+            // Fila subtarea
+            let stCells = '';
+            for (let s = 1; s <= totalSem; s++) {
+                const hl = (semResaltada && s === semResaltada) ? ' crono-sem-highlight' : '';
+                stCells += `<td class="crono-cell-empty${hl}"></td>`;
+            }
+            html += `<tr><td class="crono-subtarea-label">${st.desc}</td>${stCells}</tr>`;
+
+            avances.forEach(av => {
+                const semIni = parseInt(av.semanaInicio) || 0;
+                const semFin = parseInt(av.semanaFin)    || 0;
+                let avCells  = '';
+                for (let s = 1; s <= totalSem; s++) {
+                    const activo = semIni > 0 && semFin > 0 && s >= semIni && s <= semFin;
+                    const hl     = (semResaltada && s === semResaltada) ? ' crono-sem-highlight' : '';
+                    avCells += `<td class="${activo ? 'crono-cell-active' : 'crono-cell-empty'}${hl}"></td>`;
+                }
+                html += `<tr><td class="crono-avance-label">↳ ${av.desc}</td>${avCells}</tr>`;
+            });
+
+            if (!avances.length) {
+                let emptyCells = '';
+                for (let s = 1; s <= totalSem; s++) {
+                    const hl = (semResaltada && s === semResaltada) ? ' crono-sem-highlight' : '';
+                    emptyCells += `<td class="crono-cell-empty${hl}"></td>`;
+                }
+                html += `<tr><td class="crono-avance-label" style="opacity:0.5;font-style:italic;">Sin avances</td>${emptyCells}</tr>`;
+            }
+        });
+
+        html += `</table>`;
+        return html;
+    }
+
+    // ══ GESTIONAR PROYECTO ══════════════════════════
+    // gestionData: { avanceId_semana: { pct, alerta, bloqueante } }
+    var gestionData = {};
+
+    // ── Calcula el % real de un avance considerando solo semanas <= semanaHasta
+    function calcularPctAvance(av, semanaHasta) {
+        const duracion = (parseInt(av.semanaFin) || 0) - (parseInt(av.semanaInicio) || 0) + 1;
+        const dur      = duracion > 0 ? duracion : 1;
+        let suma       = 0;
+        for (const [key, reg] of Object.entries(gestionData)) {
+            const [keyId, keySem] = key.split('_');
+            if (keyId !== av.id) continue;
+            if (semanaHasta && parseInt(keySem) > semanaHasta) continue;
+            if (reg.pct !== undefined) suma += Number(reg.pct);
+        }
+        return Math.min(Math.round((suma / dur) * 10) / 10, 100);
+    }
+
+    // ── Suma cruda de pct registrados para un avance (excluyendo una semana)
+    function sumaPctRegistrado(avId, excludeSemana) {
+        let suma = 0;
+        for (const [key, reg] of Object.entries(gestionData)) {
+            const [keyId, keySem] = key.split('_');
+            if (keyId !== avId) continue;
+            if (excludeSemana && parseInt(keySem) === parseInt(excludeSemana)) continue;
+            if (reg.pct !== undefined) suma += Number(reg.pct);
+        }
+        return suma;
+    }
+
+    // ── Calcula resumen Real vs Esperado a nivel de PROYECTO (todas las subtareas/avances)
+    function calcularResumenProyecto(semCorte) {
+        const subtareas = cRawData.filter(e => e.tipo === 'Subtarea');
+        let totalReal = 0, totalEsperado = 0, count = 0;
+
+        subtareas.forEach(st => {
+            const avances = cRawData.filter(av => av.tipo === 'Avance' && av.parentId === st.id);
+            avances.forEach(av => {
+                const semIni = parseInt(av.semanaInicio) || 0;
+                const semFin = parseInt(av.semanaFin)    || 0;
+                const dur    = semFin - semIni + 1 > 0 ? semFin - semIni + 1 : 1;
+
+                const real = calcularPctAvance(av, semCorte);
+
+                let esperado = 0;
+                if (semIni > 0 && semFin > 0) {
+                    if (!semCorte) {
+                        esperado = 100;
+                    } else if (semCorte < semIni) {
+                        esperado = 0;
+                    } else {
+                        const semsEjecutadas = Math.min(semCorte, semFin) - semIni + 1;
+                        esperado = Math.round((semsEjecutadas / dur) * 100 * 10) / 10;
+                    }
+                }
+
+                totalReal     += real;
+                totalEsperado += esperado;
+                count++;
+            });
+        });
+
+        if (count === 0) return null;
+        const real     = Math.round((totalReal     / count) * 10) / 10;
+        const esperado = Math.round((totalEsperado / count) * 10) / 10;
+        const dif      = Math.round((real - esperado)        * 10) / 10;
+        return { real, esperado, dif };
+    }
+
+    function renderGestionar() {
+        const cont      = document.getElementById('mainUI');
+        cont.innerHTML  = '';
+        const semCorte  = parseInt(document.getElementById('selSemGestionar').value) || 0;
+        const totalSem  = parseInt(cProyectoActivo.duracion) || 1;
+        const subtareas = cRawData.filter(e => e.tipo === 'Subtarea');
+
+        if (!subtareas.length) {
+            cont.innerHTML = "<div class='text-center py-5 text-muted'>No hay subtareas registradas en este proyecto.</div>";
+            return;
+        }
+
+        // ── Título del proyecto (sin tarjeta global aquí — está en el modal) ──
+        let html = `<div class="gantt-proj-title mb-3">📋 ${cProyectoActivo.nombre}</div>`;
+
+        // ── Cabecera semanas ──
+        let semHdrs = '';
+        for (let s = 1; s <= totalSem; s++) {
+            const sel = (semCorte && s === semCorte) ? ' sem-selected' : '';
+            semHdrs += `<th class="gantt-sem-th${sel}">S${s}</th>`;
+        }
+        const totalCols = 1 + 1 + totalSem;
+
+        // ── Una tabla + tarjeta resumen por cada subtarea ──
+        subtareas.forEach((st, i) => {
+            const avances = cRawData.filter(av => av.tipo === 'Avance' && av.parentId === st.id);
+
+            // Calcular resumen de ESTA subtarea
+            let totalReal = 0, totalEsp = 0, countAv = 0;
+            avances.forEach(av => {
+                const semIni = parseInt(av.semanaInicio) || 0;
+                const semFin = parseInt(av.semanaFin)    || 0;
+                const dur    = semFin - semIni + 1 > 0 ? semFin - semIni + 1 : 1;
+                const real   = calcularPctAvance(av, semCorte);
+                let esp = 0;
+                if (semIni > 0 && semFin > 0) {
+                    if (!semCorte)            esp = 100;
+                    else if (semCorte < semIni) esp = 0;
+                    else { const ex = Math.min(semCorte, semFin) - semIni + 1; esp = Math.round((ex / dur) * 1000) / 10; }
+                }
+                totalReal += real; totalEsp += esp; countAv++;
+            });
+
+            // ── Fila: título subtarea (izq) + tarjeta resumen (der) ──
+            html += `<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:${i>0?'20px':'0'}; margin-bottom:6px;">`;
+            html += `<div style="font-size:0.95rem; font-weight:800; color:var(--timia-sub);">${st.desc}</div>`;
+
+            if (countAv > 0) {
+                const real = Math.round((totalReal / countAv) * 10) / 10;
+                const esp  = Math.round((totalEsp  / countAv) * 10) / 10;
+                const dif  = Math.round((real - esp) * 10) / 10;
+                const difCls = dif > 0 ? 'rv-dif-pos' : dif < 0 ? 'rv-dif-neg' : 'rv-dif-neu';
+                const difSign = dif > 0 ? '+' : '';
+                html += `<div class="resumen-box" style="min-width:260px;">
+                    <div class="resumen-box-title">Avance acumulado — ${st.desc}</div>
+                    <div class="resumen-cols">
+                        <div class="resumen-col">
+                            <div class="resumen-col-label">Avance real</div>
+                            <div class="resumen-val rv-real">${real}%</div>
+                        </div>
+                        <div class="resumen-col">
+                            <div class="resumen-col-label">Avance esperado</div>
+                            <div class="resumen-val rv-esperado">${esp}%</div>
+                        </div>
+                        <div class="resumen-col">
+                            <div class="resumen-col-label">Diferencia</div>
+                            <div class="resumen-val ${difCls}">${difSign}${dif}%</div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            html += `</div>`;
+
+            // ── Tabla Gantt de esta subtarea ──
+            html += `<div class="gantt-outer"><table class="gantt-table" style="width:100%;">
+                <thead><tr>
+                    <th class="gantt-label-th gantt-label-col">Actividades / Avance</th>
+                    <th class="gantt-pct-th">%</th>
+                    ${semHdrs}
+                </tr></thead>
+                <tbody>`;
+
+            // Fila de la subtarea misma (como encabezado visual dentro de la tabla)
+            let stSemCells = `<td class="gantt-pct-cell" style="background:#3d3d3d;"></td>`;
+            for (let s = 1; s <= totalSem; s++) stSemCells += `<td style="background:#f0f0f0;border-color:#d0d0d0;"></td>`;
+            html += `<tr><td class="gantt-st-label gantt-label-col">${st.desc}</td>${stSemCells}</tr>`;
+
+            if (!avances.length) {
+                let emptyCells = `<td class="gantt-pct-cell pct-zero">—</td>`;
+                for (let s = 1; s <= totalSem; s++) emptyCells += `<td class="gantt-cell-empty"></td>`;
+                html += `<tr><td class="gantt-av-label gantt-label-col" style="opacity:0.6;font-style:italic;">Sin avances registrados</td>${emptyCells}</tr>`;
+            }
+
+            avances.forEach(av => {
+                const semIni = parseInt(av.semanaInicio) || 0;
+                const semFin = parseInt(av.semanaFin)    || 0;
+                const durAv  = semFin - semIni + 1 > 0 ? semFin - semIni + 1 : 1;
+                const pctReal = calcularPctAvance(av, semCorte);
+                const isDone  = pctReal >= 100;
+                const pctClass = isDone ? 'pct-done' : pctReal >= 50 ? 'pct-high' : pctReal > 0 ? 'pct-mid' : 'pct-zero';
+
+                let avCells = `<td class="gantt-pct-cell ${pctClass}">${pctReal}%</td>`;
+                for (let s = 1; s <= totalSem; s++) {
+                    const futuraDeCorse = semCorte > 0 && s > semCorte;
+                    const enRango = semIni > 0 && semFin > 0 && s >= semIni && s <= semFin;
+                    const key = av.id + '_' + s;
+                    const reg = gestionData[key];
+
+                    if ((isDone && !reg) || futuraDeCorse) {
+                        const bg = enRango ? 'gantt-cell-bar' : (s % 2 === 0 ? 'gantt-cell-stripe' : 'gantt-cell-empty');
+                        avCells += `<td class="${bg}"></td>`; continue;
+                    }
+                    if (reg !== undefined) {
+                        const hasA = reg.alerta     && reg.alerta.trim();
+                        const hasB = reg.bloqueante && reg.bloqueante.trim();
+                        const cellBg = enRango ? 'gantt-cell-bar' : 'gantt-cell-active';
+                        avCells += `<td class="${cellBg}" style="padding:2px;">
+                            <div class="gantt-reg-pct" style="color:${enRango?'white':'#1a1a1a'}">${reg.pct}%</div>
+                            ${(hasA||hasB)?`<span class="gantt-alert-lnk" onclick="verDetalleGestion('${key}')" style="color:${enRango?'#ffe082':'#A6192E'}">${hasA?'⚠️':''}${hasB?'🔴':''}</span>`:''}
+                            <button class="gantt-btn-gest" onclick="abrirGestionCelda('${av.id}','${s}','${av.desc.replace(/'/g,"\\'")}',${durAv})">✏️</button>
+                        </td>`;
+                    } else {
+                        const cellBg = enRango ? 'gantt-cell-bar' : (s % 2 === 0 ? 'gantt-cell-stripe' : 'gantt-cell-empty');
+                        avCells += `<td class="${cellBg}" style="padding:2px;">
+                            <button class="gantt-btn-gest" onclick="abrirGestionCelda('${av.id}','${s}','${av.desc.replace(/'/g,"\\'")}',${durAv})" style="${enRango?'background:rgba(255,255,255,0.85);':''}">+</button>
+                        </td>`;
+                    }
+                }
+                html += `<tr><td class="gantt-av-label gantt-label-col">${av.desc}</td>${avCells}</tr>`;
+            });
+
+            html += `</tbody></table></div>`;
+        });
+
+        // ── Leyenda ──
+        html += `<div class="gantt-legend mt-3">
+            <span><span class="legend-dot" style="background:var(--timia-teal);"></span>Actividad planificada</span>
+            <span><span class="legend-dot" style="background:#4CAF50;"></span>≥ 50% ejecutado</span>
+            <span><span class="legend-dot" style="background:#f59e0b;"></span>1–49% ejecutado</span>
+            <span><span class="legend-dot" style="background:#9e9e9e;"></span>0% / sin datos</span>
+            <span><span class="legend-dot" style="background:#2D2926;"></span>100% completado</span>
+        </div>`;
+
+        cont.innerHTML = html;
+    }
+
+    function abrirGestionCelda(avanceId, semana, avanceDesc, durAv) {
+        const key    = avanceId + '_' + semana;
+        const reg    = gestionData[key];
+        const av     = cRawData.find(e => e.id === avanceId);
+        const durReal = durAv || ((parseInt(av?.semanaFin)||0) - (parseInt(av?.semanaInicio)||0) + 1) || 1;
+
+        // ── Bloquear edición si el avance ya llegó al 100% ──
+        const pctAcumulado = calcularPctAvance(av, 0); // sin corte = total real
+        if (pctAcumulado >= 100 && !reg) {
+            alert('✅ Este avance ya está al 100% completado. No se puede registrar más gestión.');
+            return;
+        }
+
+        const sumaOtras   = sumaPctRegistrado(avanceId, semana);
+        const maxPermitido = Math.max(0, 100 * durReal - sumaOtras);
+
+        document.getElementById('gCeldaAvanceId').value     = avanceId;
+        document.getElementById('gCeldaSemana').value       = semana;
+        document.getElementById('gCeldaDurAv').value        = durReal;
+        document.getElementById('gCeldaTitulo').innerText   = `Semana ${semana}`;
+        document.getElementById('gCeldaSubtitulo').innerText = avanceDesc;
+
+        if (reg) {
+            // Celda ya existe: cargar sus propios datos
+            document.getElementById('gCeldaPct').value        = reg.pct !== undefined ? reg.pct : '';
+            document.getElementById('gCeldaAlerta').value     = reg.alerta     || '';
+            document.getElementById('gCeldaBloqueante').value = reg.bloqueante || '';
+        } else {
+            // Celda nueva: pre-cargar alertas/bloqueantes de la semana inmediatamente anterior con datos
+            document.getElementById('gCeldaPct').value = '';
+            let prevAlerta = '', prevBloq = '';
+            for (let s = semana - 1; s >= 1; s--) {
+                const prevReg = gestionData[avanceId + '_' + s];
+                if (prevReg !== undefined) {
+                    prevAlerta = prevReg.alerta     || '';
+                    prevBloq   = prevReg.bloqueante || '';
+                    break;
+                }
+            }
+            document.getElementById('gCeldaAlerta').value     = prevAlerta;
+            document.getElementById('gCeldaBloqueante').value = prevBloq;
+
+            // Indicar visualmente que vienen de semana anterior
+            if (prevAlerta || prevBloq) {
+                document.getElementById('gCeldaHeredadoInfo').style.display = 'block';
+            } else {
+                document.getElementById('gCeldaHeredadoInfo').style.display = 'none';
+            }
+        }
+        if (reg) document.getElementById('gCeldaHeredadoInfo').style.display = 'none';
+
+        const maxPct = Math.min(maxPermitido, 100);
+        document.getElementById('gCeldaMaxInfo').innerText =
+            `Máximo permitido esta semana: ${maxPct}% (acumulado otras semanas: ${sumaOtras}%, duración: ${durReal} sem.)`;
+
+        mGestionCelda.show();
+    }
+
+    function guardarGestionCelda() {
+        const avanceId = document.getElementById('gCeldaAvanceId').value;
+        const semana   = document.getElementById('gCeldaSemana').value;
+        const durAv    = parseInt(document.getElementById('gCeldaDurAv').value) || 1;
+        const pct      = document.getElementById('gCeldaPct').value.trim();
+        const alerta   = document.getElementById('gCeldaAlerta').value.trim();
+        const bloq     = document.getElementById('gCeldaBloqueante').value.trim();
+
+        if (pct === '' || isNaN(pct) || Number(pct) < 0 || Number(pct) > 100) {
+            alert('⚠️ Ingresa un porcentaje válido entre 0 y 100.'); return;
+        }
+
+        // Validar que (sumaOtras + pctNuevo) / durAv no supere 100%
+        const sumaOtras     = sumaPctRegistrado(avanceId, semana);
+        const totalSuma     = sumaOtras + Number(pct);
+        const pctResultante = totalSuma / durAv;
+        if (pctResultante > 100) {
+            const maxPermitido = Math.max(0, Math.floor(100 * durAv - sumaOtras));
+            alert(`⚠️ No puedes ingresar ese valor.\n\nSuma de otras semanas: ${sumaOtras}%\nValor ingresado: ${pct}%\nTotal: ${totalSuma}% / ${durAv} semanas = ${Math.round(pctResultante)}% → supera el 100%\n\nMáximo permitido esta semana: ${maxPermitido}%`);
+            return;
+        }
+
+        // ── No se puede guardar al 100% si hay bloqueantes activos ──
+        if (pctResultante >= 100 && bloq) {
+            alert('⚠️ No puedes marcar el avance como completado (100%) mientras existan bloqueantes activos.\n\nElimina el bloqueante antes de cerrar al 100%.'); return;
+        }
+
+        showL(true);
+        const data = {
+            nombreProyecto: cProyectoActivo.nombre,
+            projectId:      cProyectoActivo.id,
+            avanceId:       avanceId,
+            semana:         Number(semana),
+            pct:            Number(pct),
+            alerta:         alerta,
+            bloqueante:     bloq,
+            userOwner:      cCurrentEmail
+        };
+        google.script.run
+            .withSuccessHandler(() => {
+                const key = avanceId + '_' + semana;
+                gestionData[key] = { pct: Number(pct), alerta, bloqueante: bloq };
+                mGestionCelda.hide();
+                showL(false);
+                renderGestionar();
+            })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .cGuardarGestionSemana(data);
+    }
+
+    function verDetalleGestion(key) {
+        const reg  = gestionData[key] || {};
+        const [avId, sem] = key.split('_');
+        const av   = cRawData.find(e => e.id === avId);
+        document.getElementById('gDetalleTitulo').innerText = `Detalle — ${av ? av.desc : ''} · Semana ${sem}`;
+        let body = `<div class="mb-3"><span class="fw-bold fs-5">${reg.pct !== undefined ? reg.pct+'%' : '—'}</span> <span class="text-muted small">de avance registrado</span></div>`;
+        if (reg.alerta && reg.alerta.trim()) {
+            body += `<div class="alert alert-warning p-2 mb-2"><strong>⚠️ Alerta</strong><div class="mt-1 small">${reg.alerta}</div></div>`;
+        } else {
+            body += `<div class="text-muted small mb-2">Sin alertas registradas.</div>`;
+        }
+        if (reg.bloqueante && reg.bloqueante.trim()) {
+            body += `<div class="alert alert-danger p-2"><strong>🔴 Bloqueante</strong><div class="mt-1 small">${reg.bloqueante}</div></div>`;
+        } else {
+            body += `<div class="text-muted small">Sin bloqueantes registrados.</div>`;
+        }
+        document.getElementById('gDetalleBody').innerHTML = body;
+        mDetalleGestion.show();
+    }
+
+    function cargarGestionData() {
+        // Los datos de Gestion ya vienen en cRawData como tipo="Gestion"
+        // parentId = avanceId, semanaInicio = semana
+        gestionData = {};
+        cRawData.filter(r => r.tipo === 'Gestion').forEach(r => {
+            const key = r.parentId + '_' + r.semanaInicio;
+            gestionData[key] = {
+                pct:        r.gestionPct      !== '' ? Number(r.gestionPct) : undefined,
+                alerta:     r.gestionAlerta   || '',
+                bloqueante: r.gestionBloqueante || ''
+            };
+        });
+    }
+
+    // ══ MODAL AVANCE GENERAL ══════════════════════════
+    function abrirAvanceGeneral() {
+        if (!cProyectoActivo) return;
+
+        const semCorte  = parseInt(document.getElementById('selSemGestionar').value) || 0;
+        const subtareas = cRawData.filter(e => e.tipo === 'Subtarea');
+        const resumen   = calcularResumenProyecto(semCorte);
+
+        document.getElementById('agProyNombre').innerText = cProyectoActivo.nombre;
+
+        // ── Tarjeta resumen global ──
+        let html = `<div class="ag-title">AVANCE GENERAL</div>`;
+
+        if (resumen) {
+            const difClass = resumen.dif > 0 ? 'rv-dif-pos' : resumen.dif < 0 ? 'rv-dif-neg' : 'rv-dif-neu';
+            const difSign  = resumen.dif > 0 ? '+' : '';
+            html += `<div class="ag-resumen-wrap">
+                <div class="ag-resumen-box">
+                    <div class="ag-resumen-cols">
+                        <div class="ag-resumen-col">
+                            <div class="ag-col-label">Avance<br>real</div>
+                            <div class="ag-val rv-real">${resumen.real}%</div>
+                        </div>
+                        <div class="ag-resumen-col">
+                            <div class="ag-col-label">Avance<br>esperado</div>
+                            <div class="ag-val rv-esperado">${resumen.esperado}%</div>
+                        </div>
+                        <div class="ag-resumen-col">
+                            <div class="ag-col-label">Diferencia</div>
+                            <div class="ag-val ${difClass}">${difSign}${resumen.dif}%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ── Tabla por subtarea ──
+        html += `<table class="ag-table">
+            <thead><tr>
+                <th>Entregable / Subtarea</th>
+                <th style="text-align:center;width:130px;">Porcentaje</th>
+            </tr></thead>
+            <tbody>`;
+
+        if (!subtareas.length) {
+            html += `<tr><td colspan="2" class="text-center text-muted py-3">Sin subtareas registradas.</td></tr>`;
+        } else {
+            subtareas.forEach(st => {
+                const avances = cRawData.filter(av => av.tipo === 'Avance' && av.parentId === st.id);
+                let totalReal = 0, count = 0;
+                avances.forEach(av => { totalReal += calcularPctAvance(av, semCorte); count++; });
+                const pctSt = count > 0 ? Math.round((totalReal / count) * 10) / 10 : 0;
+                const pctClass = pctSt >= 100 ? 'ag-pct-done' : pctSt >= 50 ? 'ag-pct-high' : pctSt > 0 ? 'ag-pct-mid' : 'ag-pct-zero';
+                html += `<tr>
+                    <td class="ag-subtarea-link">${st.desc}</td>
+                    <td style="text-align:center;"><span class="ag-pct-badge ${pctClass}">${pctSt}%</span></td>
+                </tr>`;
+            });
+        }
+        html += `</tbody></table>`;
+
+        // ── Sección Alertas y Bloqueantes ──
+        // Recopilar todos los registros de gestión filtrados por semana
+        const alertasList   = [];
+        const bloqueantesList = [];
+
+        for (const [key, reg] of Object.entries(gestionData)) {
+            const [avId, keySem] = key.split('_');
+            const sem = parseInt(keySem);
+            if (semCorte && sem !== semCorte) continue; // si hay filtro, solo esa semana
+            const av = cRawData.find(e => e.id === avId);
+            const st = av ? cRawData.find(e => e.tipo === 'Subtarea' && cRawData.filter(x => x.tipo === 'Avance' && x.parentId === e.id).some(x => x.id === avId)) : null;
+
+            if (reg.alerta && reg.alerta.trim()) {
+                alertasList.push({ sem, avDesc: av?.desc || '', stDesc: st?.desc || '', texto: reg.alerta });
+            }
+            if (reg.bloqueante && reg.bloqueante.trim()) {
+                bloqueantesList.push({ sem, avDesc: av?.desc || '', stDesc: st?.desc || '', texto: reg.bloqueante });
+            }
+        }
+
+        // Ordenar por semana
+        alertasList.sort((a, b) => a.sem - b.sem);
+        bloqueantesList.sort((a, b) => a.sem - b.sem);
+
+        const semLabel = semCorte ? `Semana ${semCorte}` : 'todas las semanas';
+
+        html += `<div class="ag-section-title alertas">⚠️ Alertas <span class="small fw-normal text-muted ms-1">(${semLabel})</span></div>`;
+        if (alertasList.length === 0) {
+            html += `<div class="text-muted small mb-1" style="padding-left:4px;">Sin alertas registradas.</div>`;
+        } else {
+            alertasList.forEach(a => {
+                html += `<div class="ag-alert-item">
+                    ${!semCorte ? `<div class="ag-item-sem">Semana ${a.sem}</div>` : ''}
+                    <div class="ag-item-av">${a.avDesc}</div>
+                    <div class="ag-item-txt">${a.texto}</div>
+                </div>`;
+            });
+        }
+
+        html += `<div class="ag-section-title bloqueos">🔴 Bloqueantes <span class="small fw-normal text-muted ms-1">(${semLabel})</span></div>`;
+        if (bloqueantesList.length === 0) {
+            html += `<div class="text-muted small" style="padding-left:4px;">Sin bloqueantes por el momento.</div>`;
+        } else {
+            bloqueantesList.forEach(b => {
+                html += `<div class="ag-bloqueo-item">
+                    ${!semCorte ? `<div class="ag-item-sem">Semana ${b.sem}</div>` : ''}
+                    <div class="ag-item-av">${b.avDesc}</div>
+                    <div class="ag-item-txt">${b.texto}</div>
+                </div>`;
+            });
+        }
+
+        // Nota
+        html += `<div class="small text-muted mt-3 pt-2" style="border-top:1px solid #eee;">
+            ${semCorte ? `📅 Datos de la <strong>Semana ${semCorte}</strong>. Ajusta el selector en "Gestionar Proyecto" para ver otro corte.`
+                       : `📅 Mostrando <strong>todas las semanas</strong> registradas.`}
+        </div>`;
+
+        document.getElementById('agBody').innerHTML = html;
+        mAvanceGeneral.show();
+    }
+
+    function showL(s) { document.getElementById('loading').style.display = s ? 'flex' : 'none'; }
+</script>
+</body>
+</html>
