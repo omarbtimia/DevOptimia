@@ -286,91 +286,6 @@ function saveAtrasoAvance(data) {
   return { success: true, fecha: hoy };
 }
 
-function normalizarEstado_(estado) {
-  return String(estado || '').trim().toLowerCase();
-}
-
-function esEstadoTerminado_(estado) {
-  const v = normalizarEstado_(estado);
-  return v === 'terminada' || v === 'terminado';
-}
-
-function esEstadoIgnorableComoHijo_(estado) {
-  const v = normalizarEstado_(estado);
-  return v === 'eliminada' || v === 'eliminado';
-}
-
-function esProyectoCerrado_(projectId) {
-  if (!projectId) return false;
-  const ss = getDB();
-  const projSheet = ss.getSheetByName('Proyectos');
-  if (!projSheet || projSheet.getLastRow() < 2) return false;
-  const rows = projSheet.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(projectId)) {
-      return normalizarEstado_(rows[i][3]) === 'cerrado';
-    }
-  }
-  return false;
-}
-
-function getUsuariosSistema_() {
-  const ss = getDB();
-  const usersSheet = ss.getSheetByName('Usuarios');
-  if (!usersSheet || usersSheet.getLastRow() < 2) return [];
-  return usersSheet.getDataRange().getValues()
-    .slice(1)
-    .map(r => String(r[0] || '').trim().toLowerCase())
-    .filter(v => v && v !== 'correo');
-}
-
-function getEntradasProyectoAbierto_(projectId) {
-  const owners = getUsuariosSistema_();
-  let all = [];
-  owners.forEach(owner => {
-    all = all.concat(fetchEntries(owner, projectId));
-  });
-  return all;
-}
-
-function validarCierreJerarquico_(data) {
-  if (!data || !data.projectId) return;
-  if (esProyectoCerrado_(data.projectId)) return;
-  if (!esEstadoTerminado_(data.estado)) return;
-
-  const tipo = String(data.tipo || '').trim();
-  if (tipo !== 'Tarea' && tipo !== 'Subtarea') return;
-
-  const entryId = data.id || '';
-  if (!entryId) return;
-
-  const entradas = getEntradasProyectoAbierto_(data.projectId);
-
-  if (tipo === 'Tarea') {
-    const subtareasPendientes = entradas.filter(e =>
-      e.tipo === 'Subtarea' &&
-      String(e.parentId) === String(entryId) &&
-      !esEstadoIgnorableComoHijo_(e.estado) &&
-      !esEstadoTerminado_(e.estado)
-    );
-    if (subtareasPendientes.length > 0) {
-      throw new Error('No se puede cerrar la tarea: tiene subtareas sin terminar.');
-    }
-  }
-
-  if (tipo === 'Subtarea') {
-    const avancesPendientes = entradas.filter(e =>
-      e.tipo === 'Avance' &&
-      String(e.parentId) === String(entryId) &&
-      !esEstadoIgnorableComoHijo_(e.estado) &&
-      !esEstadoTerminado_(e.estado)
-    );
-    if (avancesPendientes.length > 0) {
-      throw new Error('No se puede cerrar la subtarea: tiene avances sin terminar.');
-    }
-  }
-}
-
 function saveOrUpdateEntry(data) {
   const ss = getDB();
   let sheet = ss.getSheetByName(data.userOwner) || ss.insertSheet(data.userOwner);
@@ -408,8 +323,6 @@ function saveOrUpdateEntry(data) {
       data.entregable   || '',
       data.interno ? 'Sí' : 'No'
     ];
-
-  validarCierreJerarquico_(data);
 
   if (!esNuevo) sheet.getRange(rowIndex + 1, 1, 1, 21).setValues([newRow]);
   else sheet.appendRow(newRow);

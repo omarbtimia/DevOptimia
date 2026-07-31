@@ -763,10 +763,7 @@
             interno:      fTipo === 'Avance' ? interno : false,
             observaciones:fTipo === 'Avance' ? observaciones : ''
         };
-        google.script.run
-            .withSuccessHandler(() => { mEntry.hide(); loadData(); })
-            .withFailureHandler(err => { showL(false); alert('⚠️ ' + (err && err.message ? err.message : 'No se pudo guardar el registro.')); })
-            .saveOrUpdateEntry(data);
+        google.script.run.withSuccessHandler(() => { mEntry.hide(); loadData(); }).saveOrUpdateEntry(data);
     }
 
     function abrirNota(tareaId, tareaDesc) {
