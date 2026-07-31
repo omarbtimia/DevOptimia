@@ -30,7 +30,21 @@ jobs:
       - name: Sincronizar archivos con Apps Script (Push)
         run: clasp push -f
 
-      - name: Actualizar despliegue existente
+      - name: Desplegar o actualizar Web App
         env:
           DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
-        run: clasp deploy -i "$DEPLOYMENT_ID" -d "Despliegue automático desde GitHub Actions"
+        run: |
+          if [ -n "$DEPLOYMENT_ID" ]; then
+            echo "Actualizando despliegue existente con ID: $DEPLOYMENT_ID"
+            clasp deploy -i "$DEPLOYMENT_ID" -d "Despliegue automático desde GitHub Actions"
+          else
+            EXISTING_ID=$(clasp deployments | grep -E '^\- [A-Za-z0-9_\-]+' | head -n 1 | awk '{print $2}')
+          
+            if [ -n "$EXISTING_ID" ]; then
+              echo "Se encontró despliegue previo ($EXISTING_ID). Actualizando..."
+              clasp deploy -i "$EXISTING_ID" -d "Despliegue automático desde GitHub Actions"
+            else
+              echo "No se encontró ningún despliegue. Creando la Web App inicial..."
+              clasp deploy -d "Despliegue inicial desde GitHub Actions"
+            fi
+          fi
