@@ -27,22 +27,27 @@ jobs:
         run: |
           echo "$CLASPRC_JSON" > ~/.clasprc.json
 
+      - name: Crear archivo .clasp.json
+        env:
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          echo "{\"scriptId\":\"$SCRIPT_ID\",\"rootDir\":\".\"}" > .clasp.json
+
+      - name: Verificar estado de clasp
+        run: |
+          clasp -v
+          cat .clasp.json
+          clasp status
+
       - name: Sincronizar archivos con Apps Script (Push)
         run: clasp push -f
 
-      - name: Desplegar o actualizar Web App
+      - name: Actualizar despliegue existente (misma URL)
         env:
           DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
         run: |
-          # 1. Crear una nueva versión del código en Apps Script
-          NEW_VERSION=$(clasp versions list 2>/dev/null | tail -2 | head -1 | awk '{print $2}')
-          echo "Nueva versión creada: $NEW_VERSION"
-          
-          # 2. Asignar esa nueva versión al DEPLOYMENT_ID existente
-          if [ -n "$DEPLOYMENT_ID" ]; then
-            echo "Actualizando despliegue $DEPLOYMENT_ID a la versión $NEW_VERSION..."
-            clasp deploy -i "$DEPLOYMENT_ID" -v "$NEW_VERSION" -d "Despliegue v$NEW_VERSION desde GitHub Actions"
-          else
-            echo "No hay DEPLOYMENT_ID en Secrets. Creando nuevo despliegue..."
-            clasp deploy -v "$NEW_VERSION" -d "Despliegue v$NEW_VERSION desde GitHub Actions"
+          if [ -z "$DEPLOYMENT_ID" ]; then
+            echo "ERROR: No hay DEPLOYMENT_ID configurado en Secrets."
+            exit 1
           fi
+          clasp deploy -i "$DEPLOYMENT_ID" -d "Despliegue automático desde GitHub Actions ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
