@@ -712,6 +712,23 @@
         if (fFi !== "" && fEst !== "Terminada") { alert("⚠️ Si hay fecha de fin, el estado debe ser 'Terminada'."); return; }
         if (fEst === "Terminada" && fFi === "") { alert("⚠️ Si el estado es 'Terminada', la fecha de fin es obligatoria."); return; }
 
+        // 🔒 Validación de jerarquía: no se puede cerrar un padre (Tarea/Subtarea)
+        // si aún tiene hijos (Subtareas/Avances) sin cerrar.
+        const fId = document.getElementById('fId').value;
+        if (fId && fEst === 'Terminada' && (fTipo === 'Tarea' || fTipo === 'Subtarea')) {
+            const hijosAbiertos = rawData.filter(e =>
+                e.parentId === fId && e.estado !== 'Terminada' && e.estado !== 'Eliminada'
+            );
+            if (hijosAbiertos.length > 0) {
+                const tipoHijo = fTipo === 'Tarea' ? 'subtarea(s)' : 'avance(s)/actividad(es)';
+                const detalle = hijosAbiertos
+                    .map(h => '• ' + String(h.desc || '').replace(/<[^>]*>/g, '').trim().substring(0, 60))
+                    .join('\n');
+                alert(`⚠️ No puedes marcar esta ${fTipo.toLowerCase()} como 'Terminada'.\n\nTiene ${hijosAbiertos.length} ${tipoHijo} sin cerrar:\n${detalle}`);
+                return;
+            }
+        }
+
         if (fTipo === 'Avance' && fEst === 'Terminada') {
             if (sinEnt) {
                 if (!observaciones) {
@@ -763,7 +780,10 @@
             interno:      fTipo === 'Avance' ? interno : false,
             observaciones:fTipo === 'Avance' ? observaciones : ''
         };
-        google.script.run.withSuccessHandler(() => { mEntry.hide(); loadData(); }).saveOrUpdateEntry(data);
+        google.script.run
+            .withSuccessHandler(() => { mEntry.hide(); loadData(); })
+            .withFailureHandler(err => { showL(false); alert('⚠️ ' + err.message); })
+            .saveOrUpdateEntry(data);
     }
 
     function abrirNota(tareaId, tareaDesc) {
