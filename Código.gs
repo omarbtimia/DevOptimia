@@ -286,6 +286,34 @@ function saveAtrasoAvance(data) {
   return { success: true, fecha: hoy };
 }
 
+// ══════════════════════════════════════════════════
+//  VALIDACIÓN DE JERARQUÍA — no cerrar padres con hijos abiertos
+// ══════════════════════════════════════════════════
+const RESERVED_SHEETS_ = ['Usuarios', 'Proyectos', 'Categorias', 'Asignaciones', 'Auditoria'];
+
+// Busca en TODAS las hojas de owners (Tareas/Subtareas/Avances pueden
+// estar asignadas a usuarios distintos del padre) si existe algún hijo
+// directo (Parent_ID === parentId) cuyo Estado no sea 'Terminada' ni 'Eliminada'.
+function tieneHijosAbiertos_(ss, parentId) {
+  const sheets = ss.getSheets();
+  for (let s = 0; s < sheets.length; s++) {
+    const sheet = sheets[s];
+    const name = sheet.getName();
+    if (RESERVED_SHEETS_.indexOf(name) !== -1) continue;
+    if (sheet.getLastRow() < 2) continue;
+
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (String(row[2]) === String(parentId)) {
+        const estado = String(row[6] || '').trim();
+        if (estado !== 'Terminada' && estado !== 'Eliminada') return true;
+      }
+    }
+  }
+  return false;
+}
+
 function saveOrUpdateEntry(data) {
   const ss = getDB();
   let sheet = ss.getSheetByName(data.userOwner) || ss.insertSheet(data.userOwner);
@@ -295,6 +323,16 @@ function saveOrUpdateEntry(data) {
   const values   = sheet.getDataRange().getValues();
   const rowIndex = values.findIndex(r => r[0] === data.id);
   const esNuevo  = rowIndex === -1;
+
+  // 🔒 Validación de jerarquía (respaldo de servidor): no se puede cerrar
+  // una Tarea/Subtarea si aún tiene hijos (Subtareas/Avances) sin cerrar.
+  if (!esNuevo && data.estado === 'Terminada' && (data.tipo === 'Tarea' || data.tipo === 'Subtarea')) {
+    if (tieneHijosAbiertos_(ss, entryId)) {
+      const tipoHijo = data.tipo === 'Tarea' ? 'subtareas' : 'avances/actividades';
+      throw new Error(`No se puede marcar como "Terminada": existen ${tipoHijo} sin cerrar dentro de este elemento.`);
+    }
+  }
+
   const hoy      = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const fechaInicio = esNuevo
     ? (data.fechaInicio || hoy)
