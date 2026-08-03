@@ -14,12 +14,17 @@
         .filter-card { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; display: none; margin-bottom: 20px; }
         .level-1-header { color: #4b69ff; font-size: 1.25rem; font-weight: 700; margin: 2rem 0 0.8rem 0; display: flex; justify-content: space-between; align-items: flex-start; }
         .level-2-box { background: white; border: 1px solid #dee2e6; border-left: 5px solid #4b69ff; margin-bottom: 8px; width: 100%; }
-        .level-2-box.clickable-report-task { cursor: pointer; transition: background 0.2s ease-in-out; }
-        .level-2-box.clickable-report-task:hover { background: #f1f3f9; border-left-color: #A6192E; }
         .level-2-title { padding: 12px; font-weight: 600; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
         .actions-wrap { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
         .level-3-list { padding: 0; list-style: none; margin: 0; background: #fafafa; width: 100%; }
         .level-3-item { padding: 10px 12px 10px 30px; border-top: 1px solid #f1f1f1; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .level-3-item-details { border-top: 1px solid #f1f1f1; }
+        .level-3-item-details summary { padding: 10px 12px 10px 30px; font-size: 0.9rem; display: flex; justify-content: flex-start; align-items: flex-start; gap: 6px; cursor: pointer; list-style: none; }
+        .level-3-item-details summary::-webkit-details-marker { display: none; }
+        .level-3-item-details summary:hover { background: #f1f3f9; }
+        .level-3-item-details summary::before { content: '▸'; margin-right: 6px; color: #6c757d; flex-shrink: 0; transition: transform 0.15s; }
+        .level-3-item-details[open] summary::before { transform: rotate(90deg); }
+        .level-3-item-details .avance-card-detail { margin: 0 12px 10px 30px; }
         .badge-opt { font-size: 0.65rem; padding: 4px 8px; border-radius: 4px; font-weight: 800; white-space: nowrap; }
         .st-done { background: var(--optimia-red); color: white; }
         .st-process { background: #e9ecef; color: var(--optimia-black); }
@@ -400,59 +405,50 @@
         return dInicio <= d2;
     }
 
-    function verDetalleSubtareaEnReporte(subtaskId) {
-        const st = rawData.find(e => e.id === subtaskId);
-        if (!st) return;
+    // Calcula la vigencia (duración en días) de un avance:
+    // desde fechaInicio hasta fechaFin, o hasta hoy si aún no ha terminado.
+    function calcularVigenciaAvance(av) {
+        if (!av.fechaInicio) return { texto: '-', dias: null };
+        const finStr = av.fechaFin || new Date().toISOString().split('T')[0];
+        const d1 = new Date(av.fechaInicio + "T00:00:00");
+        const d2 = new Date(finStr + "T00:00:00");
+        const dias = Math.max(0, Math.round((d2 - d1) / 86400000)) + 1; // inclusivo
+        const finLabel = av.fechaFin ? av.fechaFin : 'En proceso (hoy)';
+        return { texto: `${av.fechaInicio} hasta ${finLabel}`, dias };
+    }
 
-        document.getElementById('detailModalTitle').innerText = `Subtarea: ${st.desc}`;
-        document.getElementById('detJira').innerText = st.jira || 'No parametrizado';
-        document.getElementById('detMsd').innerText = st.msd || 'No parametrizado';
-        document.getElementById('detEspTecnica').innerText = st.espTecnica || 'Sin especificación técnica registrada';
-        document.getElementById('detEspFuncional').innerText = st.espFuncional || 'Sin especificación funcional registrada';
-        document.getElementById('detAlerta').innerText = st.alerta || 'Sin alertas';
-        document.getElementById('detBloqueante').innerText = st.bloqueante || 'Sin bloqueantes';
-
-        let avs = rawData.filter(av => av.parentId === st.id && av.estado !== 'Eliminada' && validateDate(av));
-        const contenedor = document.getElementById('detAvancesContenedor');
-        contenedor.innerHTML = '';
-
-        if (avs.length === 0) {
-            contenedor.innerHTML = '<div class="text-muted small py-2">No se registran actividades para esta subtarea bajo los filtros de fecha seleccionados.</div>';
-        } else {
-            avs.forEach(av => {
-                const badgeClass = av.estado === 'Terminada' ? 'bg-danger' : (av.estado === 'Bloqueada' ? 'bg-dark' : 'bg-secondary');
-                const obsInfo = separarObservacionesYAtrasos(av.observaciones || '');
-                const atrasosHtml = obsInfo.atrasos.length
-                    ? `<div class="col-12 mt-3">
-                            <div class="small fw-bold mb-2" style="color:#856404;">⏰ Avances con atraso registrados</div>
-                            ${obsInfo.atrasos.map(a => `
-                                <div class="hist-atraso-item">
-                                    <div class="hist-atraso-fecha">${a.fecha}</div>
-                                    <div>${a.texto}</div>
-                                </div>
-                            `).join('')}
-                        </div>`
-                    : '';
-                const div = document.createElement('div');
-                div.className = 'avance-card-detail';
-                div.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="badge ${badgeClass}">${av.estado}</span>
-                        <span class="small text-muted"><strong>Vigencia:</strong> ${av.fechaInicio || '-'} hasta ${av.fechaFin || 'En Proceso'}</span>
-                    </div>
-                    <div class="mb-2 ck-content-render"><strong>Descripción:</strong> ${av.desc}</div>
-                    <div class="row text-muted small">
-                        <div class="col-md-6"><strong>¿Tiene Entregable?:</strong> ${av.sinEntregable ? 'No' : 'Sí'}</div>
-                        <div class="col-md-6"><strong>Entregable:</strong> ${av.entregable ? `<a href="${av.entregable}" target="_blank">Enlace</a>` : (av.sinEntregable ? 'N/A' : '-')}</div>
-                        <div class="col-md-6 mt-1"><strong>Evidencia:</strong> ${av.evidencia ? (av.evidencia.startsWith('http') ? `<a href="${av.evidencia}" target="_blank">Enlace</a>` : av.evidencia) : '-'}</div>
-                        <div class="col-md-6 mt-1"><strong>Justificación/Obs:</strong> ${obsInfo.textoLibre || '-'}</div>
-                        ${atrasosHtml}
-                    </div>
-                `;
-                contenedor.appendChild(div);
-            });
-        }
-        mDetail.show();
+    // Genera el HTML de detalle específico de UN avance (usado dentro del <details> del reporte).
+    function renderAvanceDetalleHtml(av) {
+        const badgeClass = av.estado === 'Terminada' ? 'bg-danger' : (av.estado === 'Bloqueada' ? 'bg-dark' : 'bg-secondary');
+        const obsInfo = separarObservacionesYAtrasos(av.observaciones || '');
+        const vigencia = calcularVigenciaAvance(av);
+        const atrasosHtml = obsInfo.atrasos.length
+            ? `<div class="col-12 mt-3">
+                    <div class="small fw-bold mb-2" style="color:#856404;">⏰ Avances con atraso registrados</div>
+                    ${obsInfo.atrasos.map(a => `
+                        <div class="hist-atraso-item">
+                            <div class="hist-atraso-fecha">${a.fecha}</div>
+                            <div>${a.texto}</div>
+                        </div>
+                    `).join('')}
+                </div>`
+            : '';
+        return `
+            <div class="avance-card-detail">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge ${badgeClass}">${av.estado}</span>
+                    <span class="small text-muted"><strong>Vigencia:</strong> ${vigencia.texto}${vigencia.dias !== null ? ` <strong>(${vigencia.dias} día${vigencia.dias === 1 ? '' : 's'})</strong>` : ''}</span>
+                </div>
+                <div class="mb-2 ck-content-render"><strong>Descripción:</strong> ${av.desc}</div>
+                <div class="row text-muted small">
+                    <div class="col-md-6"><strong>¿Tiene Entregable?:</strong> ${av.sinEntregable ? 'No' : 'Sí'}</div>
+                    <div class="col-md-6"><strong>Entregable:</strong> ${av.entregable ? `<a href="${av.entregable}" target="_blank">Enlace</a>` : (av.sinEntregable ? 'N/A' : '-')}</div>
+                    <div class="col-md-6 mt-1"><strong>Evidencia:</strong> ${av.evidencia ? (av.evidencia.startsWith('http') ? `<a href="${av.evidencia}" target="_blank">Enlace</a>` : av.evidencia) : '-'}</div>
+                    <div class="col-md-6 mt-1"><strong>Justificación/Obs:</strong> ${obsInfo.textoLibre || '-'}</div>
+                    ${atrasosHtml}
+                </div>
+            </div>
+        `;
     }
 
     function renderUI() {
@@ -481,11 +477,7 @@
                         if (currentTab === 'gestion' || avs.length > 0) {
                             hasVisibleSubtask = true; hasVisibleContentForUser = true;
                             const box = document.createElement('div');
-                            box.className = currentTab === 'reporte' ? "level-2-box clickable-report-task" : "level-2-box";
-
-                            if(currentTab === 'reporte') {
-                                box.setAttribute('onclick', `verDetalleSubtareaEnReporte('${st.id}')`);
-                            }
+                            box.className = "level-2-box";
 
                             let html = `<div class="level-2-title">
                                 <span>${st.desc}`;
@@ -525,9 +517,17 @@
                                         }
                                     }
 
-                                    html += `<div class="level-3-item">
-                                        <span class="ck-content-render">${av.desc}${estadoLabel}${currentTab === 'gestion' ? fechaLabel : ''}${badgeAtraso}</span>`;
-                                    if(currentTab === 'gestion') {
+                                    if (currentTab === 'reporte') {
+                                        // ── Modo reporte: <details>/<summary> con detalle específico del avance ──
+                                        html += `<details class="level-3-item-details">
+                                            <summary>
+                                                <span class="ck-content-render">${av.desc}${estadoLabel}</span>
+                                            </summary>
+                                            ${renderAvanceDetalleHtml(av)}
+                                        </details>`;
+                                    } else {
+                                        html += `<div class="level-3-item">
+                                            <span class="ck-content-render">${av.desc}${estadoLabel}${fechaLabel}${badgeAtraso}</span>`;
                                         html += `<div class="actions-wrap" style="gap:4px;">`;
                                             if(av.estado !== 'En proceso')
                                                 html += `<span class="badge-opt ${stClass}">${av.estado}</span>`;
@@ -536,8 +536,8 @@
                                             html += `<button class="btn btn-sm btn-outline-danger px-2;font-size:10px;white-space:nowrap;" onclick="eliminarAvance('${av.id}','${av.desc.replace(/'/g,"\\'").substring(0,40)}')">🗑️ Eliminar</button>`;
                                         }
                                         html += `</div>`;
+                                        html += `</div>`;
                                     }
-                                    html += `</div>`;
                                 });
                                 html += `</div>`;
                             }
