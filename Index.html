@@ -69,8 +69,8 @@
     <div class="container d-flex justify-content-between align-items-center">
         <span class="brand-logo">Optimia</span>
         <div class="control-panel">
+            <select id="projSelect" class="form-select form-select-sm" style="width: 130px;" onchange="actualizarColaboradoresSelect()"></select>
             <select id="userSelect" class="form-select form-select-sm" style="width: 130px;"></select>
-            <select id="projSelect" class="form-select form-select-sm" style="width: 130px;"></select>
             <button class="btn btn-danger btn-sm fw-bold px-3" onclick="loadData()">VER</button>
             <button class="btn btn-sm fw-bold px-3" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);" onclick="goHome()">← INICIO</button>
         </div>
@@ -284,6 +284,7 @@
 <script>
     var rawData = [], userList = [], categorias = [], notasData = {}, currentTab = 'gestion', mEntry, mNota, mDetail, mAtraso, currentUserEmail = "", userRole = "", hasProjects = false, ckEditor = null, ckNota = null;
     var estadoData = [], chartEstadoDona = null, chartEstadoCategoria = null;
+    var proyectosData = [], asignacionesData = [];
 
     window.onload = () => {
         mEntry = new bootstrap.Modal(document.getElementById('entryModal'), { backdrop: true, keyboard: true, focus: false });
@@ -348,21 +349,18 @@
         google.script.run.withSuccessHandler(res => {
             userList = res.userList; currentUserEmail = res.email.toLowerCase(); userRole = res.role;
             categorias = res.categorias || [];
-            const selU = document.getElementById('userSelect'), selP = document.getElementById('projSelect'),
+            proyectosData = res.projects || [];
+            asignacionesData = res.asignaciones || [];
+            const selP = document.getElementById('projSelect'),
                   selFP = document.getElementById('fProj'), selFO = document.getElementById('fOwner');
 
-            if (res.role === "Líder") {
-              selU.add(new Option("VISTA GLOBAL", "TODOS"));
-              res.userList.forEach(u => { selU.add(new Option(u, u)); selFO.add(new Option(u, u)); });
-            } else {
-              selU.add(new Option(currentUserEmail, currentUserEmail));
-              selFO.add(new Option(currentUserEmail, currentUserEmail));
-            }
-            selU.value = currentUserEmail;
+            res.userList.forEach(u => selFO.add(new Option(u, u)));
 
             if (res.projects.length > 0) {
                 hasProjects = true;
                 res.projects.forEach(p => { selP.add(new Option(p.nombre, p.id)); selFP.add(new Option(p.nombre, p.id)); });
+                selP.value = res.projects[0].id;
+                actualizarColaboradoresSelect();
                 document.getElementById('btnNewTask').style.display = 'block';
                 loadData();
             } else {
@@ -371,6 +369,33 @@
             }
         }).getAppData();
     };
+
+    // Filtra el selector de Colaborador según el proyecto seleccionado,
+    // para que solo aparezcan usuarios (líder + asignados) de ESE proyecto.
+    function actualizarColaboradoresSelect() {
+        const selU = document.getElementById('userSelect');
+        const previo = selU.value;
+        selU.innerHTML = '';
+
+        if (userRole !== 'Líder') {
+            selU.add(new Option(currentUserEmail, currentUserEmail));
+            selU.value = currentUserEmail;
+            return;
+        }
+
+        const projId = document.getElementById('projSelect').value;
+        selU.add(new Option('VISTA GLOBAL', 'TODOS'));
+
+        const proyecto = proyectosData.find(p => String(p.id) === String(projId));
+        const liderEmail = proyecto ? (proyecto.lider || '').toLowerCase() : '';
+        const asignados = asignacionesData.filter(a => String(a.proyectoId) === String(projId)).map(a => a.email);
+        const colaboradores = Array.from(new Set([liderEmail, ...asignados].filter(Boolean))).sort();
+
+        colaboradores.forEach(u => selU.add(new Option(u, u)));
+
+        if (Array.from(selU.options).some(o => o.value === previo)) selU.value = previo;
+        else selU.value = 'TODOS';
+    }
 
     function changeTab(t) {
         currentTab = t;
