@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
 
 jobs:
   deploy:
@@ -24,14 +25,24 @@ jobs:
       - name: Crear archivo de autenticación de Clasp
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: echo "$CLASPRC_JSON" > ~/.clasprc.json
+
+      - name: Seleccionar entorno según rama
+        id: env
         run: |
-          echo "$CLASPRC_JSON" > ~/.clasprc.json
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "SCRIPT_ID=${{ secrets.SCRIPT_ID }}"       >> $GITHUB_OUTPUT
+            echo "DEPLOYMENT_ID=${{ secrets.DEPLOYMENT_ID }}" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=Producción"                             >> $GITHUB_OUTPUT
+          else
+            echo "SCRIPT_ID=${{ secrets.SCRIPT_ID_DEV }}"        >> $GITHUB_OUTPUT
+            echo "DEPLOYMENT_ID=${{ secrets.DEPLOYMENT_ID_DEV }}"  >> $GITHUB_OUTPUT
+            echo "ENV_NAME=Desarrollo"                             >> $GITHUB_OUTPUT
+          fi
 
       - name: Crear archivo .clasp.json
-        env:
-          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
         run: |
-          echo "{\"scriptId\":\"$SCRIPT_ID\",\"rootDir\":\".\"}" > .clasp.json
+          echo "{\"scriptId\":\"${{ steps.env.outputs.SCRIPT_ID }}\",\"rootDir\":\".\"}" > .clasp.json
 
       - name: Verificar estado de clasp
         run: |
@@ -42,12 +53,15 @@ jobs:
       - name: Sincronizar archivos con Apps Script (Push)
         run: clasp push -f
 
-      - name: Actualizar despliegue existente (misma URL)
-        env:
-          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+      - name: Actualizar despliegue existente
         run: |
+          DEPLOYMENT_ID="${{ steps.env.outputs.DEPLOYMENT_ID }}"
+          ENV_NAME="${{ steps.env.outputs.ENV_NAME }}"
+
           if [ -z "$DEPLOYMENT_ID" ]; then
-            echo "ERROR: No hay DEPLOYMENT_ID configurado en Secrets."
+            echo "ERROR: No hay DEPLOYMENT_ID configurado para $ENV_NAME."
             exit 1
           fi
-          clasp deploy -i "$DEPLOYMENT_ID" -d "Despliegue automático desde GitHub Actions ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+
+          echo "Desplegando en $ENV_NAME (Deployment: $DEPLOYMENT_ID)..."
+          clasp deploy -i "$DEPLOYMENT_ID" -d "[$ENV_NAME] Auto-deploy $(date -u +%Y-%m-%dT%H:%M:%SZ)"
