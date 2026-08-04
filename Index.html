@@ -69,8 +69,8 @@
     <div class="container d-flex justify-content-between align-items-center">
         <span class="brand-logo">Optimia</span>
         <div class="control-panel">
+            <select id="projSelect" class="form-select form-select-sm" style="width: 130px;" onchange="actualizarColaboradoresSelect()"></select>
             <select id="userSelect" class="form-select form-select-sm" style="width: 130px;"></select>
-            <select id="projSelect" class="form-select form-select-sm" style="width: 130px;"></select>
             <button class="btn btn-danger btn-sm fw-bold px-3" onclick="loadData()">VER</button>
             <button class="btn btn-sm fw-bold px-3" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);" onclick="goHome()">← INICIO</button>
         </div>
@@ -81,16 +81,17 @@
     <div class="d-flex gap-2 mb-3">
         <button class="btn btn-sm btn-dark px-4 fw-bold" id="btnGest" onclick="changeTab('gestion')">GESTIÓN</button>
         <button class="btn btn-sm btn-outline-dark px-4 fw-bold" id="btnRepo" onclick="changeTab('reporte')">REPORTE</button>
+        <button class="btn btn-sm btn-outline-dark px-4 fw-bold" id="btnEstado" onclick="changeTab('estado')">📊 ESTADO GENERAL</button>
         <button id="btnNewTask" class="btn btn-sm btn-outline-primary ms-auto fw-bold" style="display:none" onclick="openModal('Tarea','','')">+ Nueva Tarea</button>
     </div>
     <div id="filterSection" class="filter-card">
         <div class="row g-2 align-items-end">
             <div class="col-md-5"><label class="small fw-bold">Fecha Inicio</label><input type="date" id="f1" class="form-control form-control-sm"></div>
             <div class="col-md-5"><label class="small fw-bold">Fecha Fin</label><input type="date" id="f2" class="form-control form-control-sm"></div>
-            <div class="col-md-2"><button class="btn btn-dark btn-sm w-100 fw-bold" onclick="renderUI()">FILTRAR</button></div>
+            <div class="col-md-2"><button class="btn btn-dark btn-sm w-100 fw-bold" onclick="aplicarFiltro()">FILTRAR</button></div>
         </div>
         <div class="mt-2 text-end">
-            <button class="btn btn-sm btn-dark fw-bold" onclick="abrirModalReporte()">📋 VER REPORTE PARA CORREO</button>
+            <button id="btnVerReporteCorreo" class="btn btn-sm btn-dark fw-bold" onclick="abrirModalReporte()">📋 VER REPORTE PARA CORREO</button>
         </div>
     </div>
     <div id="mainUI"></div>
@@ -279,8 +280,11 @@
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
     var rawData = [], userList = [], categorias = [], notasData = {}, currentTab = 'gestion', mEntry, mNota, mDetail, mAtraso, currentUserEmail = "", userRole = "", hasProjects = false, ckEditor = null, ckNota = null;
+    var estadoData = [], chartEstadoDona = null, chartEstadoCategoria = null;
+    var proyectosData = [], asignacionesData = [];
 
     window.onload = () => {
         mEntry = new bootstrap.Modal(document.getElementById('entryModal'), { backdrop: true, keyboard: true, focus: false });
@@ -345,21 +349,18 @@
         google.script.run.withSuccessHandler(res => {
             userList = res.userList; currentUserEmail = res.email.toLowerCase(); userRole = res.role;
             categorias = res.categorias || [];
-            const selU = document.getElementById('userSelect'), selP = document.getElementById('projSelect'),
+            proyectosData = res.projects || [];
+            asignacionesData = res.asignaciones || [];
+            const selP = document.getElementById('projSelect'),
                   selFP = document.getElementById('fProj'), selFO = document.getElementById('fOwner');
 
-            if (res.role === "Líder") {
-              selU.add(new Option("VISTA GLOBAL", "TODOS"));
-              res.userList.forEach(u => { selU.add(new Option(u, u)); selFO.add(new Option(u, u)); });
-            } else {
-              selU.add(new Option(currentUserEmail, currentUserEmail));
-              selFO.add(new Option(currentUserEmail, currentUserEmail));
-            }
-            selU.value = currentUserEmail;
+            res.userList.forEach(u => selFO.add(new Option(u, u)));
 
             if (res.projects.length > 0) {
                 hasProjects = true;
                 res.projects.forEach(p => { selP.add(new Option(p.nombre, p.id)); selFP.add(new Option(p.nombre, p.id)); });
+                selP.value = res.projects[0].id;
+                actualizarColaboradoresSelect();
                 document.getElementById('btnNewTask').style.display = 'block';
                 loadData();
             } else {
@@ -369,16 +370,52 @@
         }).getAppData();
     };
 
+    // Filtra el selector de Colaborador según el proyecto seleccionado,
+    // para que solo aparezcan usuarios (líder + asignados) de ESE proyecto.
+    function actualizarColaboradoresSelect() {
+        const selU = document.getElementById('userSelect');
+        const previo = selU.value;
+        selU.innerHTML = '';
+
+        if (userRole !== 'Líder') {
+            selU.add(new Option(currentUserEmail, currentUserEmail));
+            selU.value = currentUserEmail;
+            return;
+        }
+
+        const projId = document.getElementById('projSelect').value;
+        selU.add(new Option('VISTA GLOBAL', 'TODOS'));
+
+        const proyecto = proyectosData.find(p => String(p.id) === String(projId));
+        const liderEmail = proyecto ? (proyecto.lider || '').toLowerCase() : '';
+        const asignados = asignacionesData.filter(a => String(a.proyectoId) === String(projId)).map(a => a.email);
+        const colaboradores = Array.from(new Set([liderEmail, ...asignados].filter(Boolean))).sort();
+
+        colaboradores.forEach(u => selU.add(new Option(u, u)));
+
+        if (Array.from(selU.options).some(o => o.value === previo)) selU.value = previo;
+        else selU.value = 'TODOS';
+    }
+
     function changeTab(t) {
         currentTab = t;
-        document.getElementById('btnGest').className = t === 'gestion' ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
-        document.getElementById('btnRepo').className = t === 'reporte' ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
-        document.getElementById('filterSection').style.display = t === 'reporte' ? 'block' : 'none';
+        document.getElementById('btnGest').className   = t === 'gestion' ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
+        document.getElementById('btnRepo').className   = t === 'reporte' ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
+        document.getElementById('btnEstado').className = t === 'estado'  ? 'btn btn-sm btn-dark px-4 fw-bold' : 'btn btn-sm btn-outline-dark px-4 fw-bold';
+        document.getElementById('filterSection').style.display = (t === 'reporte' || t === 'estado') ? 'block' : 'none';
+        document.getElementById('btnVerReporteCorreo').style.display = t === 'reporte' ? 'inline-block' : 'none';
         document.getElementById('btnNewTask').style.display = (t === 'gestion' && hasProjects) ? 'block' : 'none';
-        renderUI();
+        if (t === 'estado') loadEstadoGeneral();
+        else renderUI();
+    }
+
+    function aplicarFiltro() {
+        if (currentTab === 'estado') renderEstadoGeneral();
+        else renderUI();
     }
 
     function loadData() {
+        if (currentTab === 'estado') { loadEstadoGeneral(); return; }
         showL(true);
         const u = document.getElementById('userSelect').value, p = document.getElementById('projSelect').value;
         const cb = data => {
@@ -449,6 +486,232 @@
                 </div>
             </div>
         `;
+    }
+
+    // ══════════════════════════════════════════════════
+    //  ESTADO GENERAL — dashboard de salud del proyecto
+    // ══════════════════════════════════════════════════
+    function loadEstadoGeneral() {
+        const p = document.getElementById('projSelect').value;
+        if (!p) { document.getElementById('mainUI').innerHTML = "<div class='alert alert-warning m-3'>Selecciona un proyecto.</div>"; return; }
+        showL(true);
+        google.script.run.withSuccessHandler(data => {
+            estadoData = data;
+            showL(false);
+            renderEstadoGeneral();
+        }).fetchAllEntries(userList, p);
+    }
+
+    function tarjetaMetrica(titulo, valor, color) {
+        return `<div class="col-6 col-md-4 col-lg-2">
+            <div style="background:white;border:1px solid #dee2e6;border-left:4px solid ${color};border-radius:6px;padding:12px 14px;height:100%;">
+                <div class="small text-muted fw-bold" style="line-height:1.2;">${titulo}</div>
+                <div class="fw-bold" style="font-size:1.5rem;color:${color};">${valor}</div>
+            </div>
+        </div>`;
+    }
+
+    function renderEstadoGeneral() {
+        const cont = document.getElementById('mainUI');
+        const avances   = estadoData.filter(e => e.tipo === 'Avance' && e.estado !== 'Eliminada' && validateDate(e));
+        const tareas    = estadoData.filter(e => e.tipo === 'Tarea');
+        const subtareas = estadoData.filter(e => e.tipo === 'Subtarea');
+
+        if (estadoData.length === 0) {
+            cont.innerHTML = "<div class='text-center py-5 text-muted'>Sin información para el proyecto seleccionado.</div>";
+            return;
+        }
+
+        // ── Métricas generales ──
+        const terminadas = avances.filter(a => a.estado === 'Terminada');
+        const totalAv = avances.length;
+        const pctTerminadas = totalAv ? Math.round((terminadas.length / totalAv) * 100) : 0;
+
+        const diasCierreGlobal = terminadas
+            .map(a => (a.fechaInicio && a.fechaFin) ? diasEntre(a.fechaInicio, a.fechaFin) + 1 : null)
+            .filter(d => d !== null && !isNaN(d) && d >= 0);
+        const promedioCierreGlobal = diasCierreGlobal.length
+            ? (diasCierreGlobal.reduce((a,b) => a+b, 0) / diasCierreGlobal.length).toFixed(1)
+            : '-';
+
+        const enAtraso = avances.filter(a => a.estado !== 'Terminada' && calcularInfoAtraso(a).enAtraso);
+        const bloqueantesActivos = estadoData.filter(e =>
+            (e.tipo === 'Subtarea' || e.tipo === 'Avance') && e.estado !== 'Terminada' && e.estado !== 'Eliminada' &&
+            e.bloqueante && e.bloqueante.trim()
+        );
+        const tareasCerradas    = tareas.filter(t => t.estado === 'Terminada').length;
+        const subtareasCerradas = subtareas.filter(s => s.estado === 'Terminada').length;
+
+        // ── Agrupación por categoría y estado ──
+        const ESTADOS = ['En proceso', 'Terminada', 'Bloqueada', 'En Pausa'];
+        const categoriasSet = {};
+        avances.forEach(a => {
+            const cat = a.categoria || 'Sin categoría';
+            if (!categoriasSet[cat]) categoriasSet[cat] = { 'En proceso':0,'Terminada':0,'Bloqueada':0,'En Pausa':0, total:0, diasArr:[] };
+            const estKey = ESTADOS.includes(a.estado) ? a.estado : 'En proceso';
+            categoriasSet[cat][estKey]++;
+            categoriasSet[cat].total++;
+            if (a.estado === 'Terminada' && a.fechaInicio && a.fechaFin) {
+                const d = diasEntre(a.fechaInicio, a.fechaFin) + 1;
+                if (!isNaN(d) && d >= 0) categoriasSet[cat].diasArr.push(d);
+            }
+        });
+        const catNames = Object.keys(categoriasSet).sort();
+
+        // ── Carga de trabajo por responsable ──
+        const ownersSet = {};
+        avances.forEach(a => {
+            if (!ownersSet[a.owner]) ownersSet[a.owner] = { abiertos:0, cerrados:0 };
+            if (a.estado === 'Terminada') ownersSet[a.owner].cerrados++;
+            else ownersSet[a.owner].abiertos++;
+        });
+
+        // ── HTML ──
+        let html = `
+        <div class="row g-2 mb-4">
+            ${tarjetaMetrica('📌 Total Avances', totalAv, '#4b69ff')}
+            ${tarjetaMetrica('✅ % Terminadas', pctTerminadas + '%', '#A6192E')}
+            ${tarjetaMetrica('⏱️ Prom. días cierre', promedioCierreGlobal, '#2D2926')}
+            ${tarjetaMetrica('⏰ En atraso (+7d)', enAtraso.length, '#856404')}
+            ${tarjetaMetrica('🔴 Bloqueantes activos', bloqueantesActivos.length, '#842029')}
+            ${tarjetaMetrica('🗂️ Tareas cerradas', `${tareasCerradas}/${tareas.length}`, '#0d6efd')}
+            ${tarjetaMetrica('📁 Subtareas cerradas', `${subtareasCerradas}/${subtareas.length}`, '#0d6efd')}
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="filter-card" style="display:block;">
+                    <h6 class="fw-bold mb-3">Distribución de estados (Avances)</h6>
+                    <canvas id="chartEstadoDonaCanvas" height="220"></canvas>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="filter-card" style="display:block;">
+                    <h6 class="fw-bold mb-3">Avances por categoría (apilado por estado)</h6>
+                    <canvas id="chartEstadoCategoriaCanvas" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-card mb-4" style="display:block;">
+            <h6 class="fw-bold mb-3">📋 Consolidado por Categoría</h6>
+            <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light"><tr>
+                    <th>Categoría</th><th>En proceso</th><th>Terminada</th><th>Bloqueada</th><th>En Pausa</th><th>Total</th><th>Prom. días cierre</th>
+                </tr></thead>
+                <tbody>
+                    ${catNames.length === 0 ? '<tr><td colspan="7" class="text-center text-muted">Sin avances en el rango seleccionado</td></tr>' : catNames.map(cat => {
+                        const c = categoriasSet[cat];
+                        const prom = c.diasArr.length ? (c.diasArr.reduce((a,b)=>a+b,0)/c.diasArr.length).toFixed(1) : '-';
+                        return `<tr>
+                            <td class="fw-bold">${cat}</td>
+                            <td>${c['En proceso']}</td>
+                            <td>${c['Terminada']}</td>
+                            <td>${c['Bloqueada']}</td>
+                            <td>${c['En Pausa']}</td>
+                            <td class="fw-bold">${c.total}</td>
+                            <td>${prom}</td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+            </div>
+        </div>
+
+        <div class="filter-card mb-4" style="display:block;">
+            <h6 class="fw-bold mb-3">👤 Carga de trabajo por responsable</h6>
+            <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light"><tr><th>Responsable</th><th>Abiertos</th><th>Cerrados</th><th>Total</th></tr></thead>
+                <tbody>
+                    ${Object.keys(ownersSet).length === 0 ? '<tr><td colspan="4" class="text-center text-muted">Sin datos</td></tr>' : Object.keys(ownersSet).sort().map(o => {
+                        const d = ownersSet[o];
+                        return `<tr><td>${o}</td><td>${d.abiertos}</td><td>${d.cerrados}</td><td class="fw-bold">${d.abiertos + d.cerrados}</td></tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+            </div>
+        </div>
+
+        ${enAtraso.length ? `
+        <div class="filter-card mb-4" style="display:block;">
+            <h6 class="fw-bold mb-3" style="color:#856404;">⏰ Avances con mayor atraso (Top 10)</h6>
+            <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light"><tr><th>Descripción</th><th>Responsable</th><th>Categoría</th><th>Días abierto</th></tr></thead>
+                <tbody>
+                    ${enAtraso
+                        .sort((a,b) => calcularInfoAtraso(b).diasAtraso - calcularInfoAtraso(a).diasAtraso)
+                        .slice(0, 10)
+                        .map(a => `<tr>
+                            <td class="ck-content-render">${a.desc}</td>
+                            <td>${a.owner}</td>
+                            <td>${a.categoria || '-'}</td>
+                            <td class="fw-bold text-danger">${calcularInfoAtraso(a).diasAtraso} días</td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>
+            </div>
+        </div>` : ''}
+
+        ${bloqueantesActivos.length ? `
+        <div class="filter-card" style="display:block;">
+            <h6 class="fw-bold mb-3" style="color:#842029;">🔴 Bloqueantes activos</h6>
+            <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+                <thead class="table-light"><tr><th>Elemento</th><th>Tipo</th><th>Responsable</th><th>Bloqueante</th></tr></thead>
+                <tbody>
+                    ${bloqueantesActivos.map(b => `<tr>
+                        <td class="ck-content-render">${b.desc}</td>
+                        <td>${b.tipo}</td>
+                        <td>${b.owner}</td>
+                        <td class="text-danger">${b.bloqueante}</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+            </div>
+        </div>` : ''}
+        `;
+
+        cont.innerHTML = html;
+
+        // ── Gráficas (Chart.js) ──
+        if (chartEstadoDona) chartEstadoDona.destroy();
+        if (chartEstadoCategoria) chartEstadoCategoria.destroy();
+        if (typeof Chart === 'undefined') return;
+
+        const ctxDona = document.getElementById('chartEstadoDonaCanvas').getContext('2d');
+        chartEstadoDona = new Chart(ctxDona, {
+            type: 'doughnut',
+            data: {
+                labels: ESTADOS,
+                datasets: [{
+                    data: ESTADOS.map(es => avances.filter(a => a.estado === es).length),
+                    backgroundColor: ['#e9ecef', '#A6192E', '#2D2926', '#f5a623']
+                }]
+            },
+            options: { plugins: { legend: { position: 'bottom' } } }
+        });
+
+        const ctxCat = document.getElementById('chartEstadoCategoriaCanvas').getContext('2d');
+        chartEstadoCategoria = new Chart(ctxCat, {
+            type: 'bar',
+            data: {
+                labels: catNames,
+                datasets: [
+                    { label: 'En proceso', data: catNames.map(c => categoriasSet[c]['En proceso']), backgroundColor: '#e9ecef' },
+                    { label: 'Terminada',  data: catNames.map(c => categoriasSet[c]['Terminada']),  backgroundColor: '#A6192E' },
+                    { label: 'Bloqueada',  data: catNames.map(c => categoriasSet[c]['Bloqueada']),  backgroundColor: '#2D2926' },
+                    { label: 'En Pausa',   data: catNames.map(c => categoriasSet[c]['En Pausa']),   backgroundColor: '#f5a623' }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
     }
 
     function renderUI() {

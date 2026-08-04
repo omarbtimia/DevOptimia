@@ -226,24 +226,26 @@ function getAppData() {
 
   const openProjects = allProj.filter(r => !r[3] || r[3].toString().toLowerCase() !== 'cerrado');
 
+  let asignSheet = ss.getSheetByName('Asignaciones') || ss.insertSheet('Asignaciones');
+  if (asignSheet.getLastRow() === 0) asignSheet.appendRow(['ID_PROYECTO', 'EMAIL_USUARIO']);
+  const asignations = asignSheet.getLastRow() > 1 ? asignSheet.getDataRange().getValues().slice(1) : [];
+
   let myProjects = [];
   if (role === 'Líder') {
-    myProjects = openProjects.map(r => ({ id: r[0], nombre: r[1] }));
+    myProjects = openProjects.map(r => ({ id: r[0], nombre: r[1], lider: r[2] || '' }));
   } else {
-    let asignSheet = ss.getSheetByName('Asignaciones') || ss.insertSheet('Asignaciones');
-    if (asignSheet.getLastRow() === 0) asignSheet.appendRow(['ID_PROYECTO', 'EMAIL_USUARIO']);
-    const asignations = asignSheet.getDataRange().getValues();
-    const idsAsigned = asignations.filter(r => r[1].toLowerCase() === email).map(r => String(r[0]));
-    myProjects = openProjects.filter(r => idsAsigned.includes(String(r[0]))).map(r => ({ id: r[0], nombre: r[1] }));
+    const idsAsigned = asignations.filter(r => r[1] && r[1].toLowerCase() === email).map(r => String(r[0]));
+    myProjects = openProjects.filter(r => idsAsigned.includes(String(r[0]))).map(r => ({ id: r[0], nombre: r[1], lider: r[2] || '' }));
   }
 
   return {
-    access:     true,
-    email:      email,
-    role:       role,
-    userList:   usersData.map(r => r[0]).filter(e => e !== '' && e !== 'CORREO'),
-    projects:   myProjects,
-    categorias: getCategorias()
+    access:      true,
+    email:       email,
+    role:        role,
+    userList:    usersData.map(r => r[0]).filter(e => e !== '' && e !== 'CORREO'),
+    projects:    myProjects,
+    asignaciones: asignations.filter(r => r[0] && r[1]).map(r => ({ proyectoId: String(r[0]), email: r[1].toLowerCase() })),
+    categorias:  getCategorias()
   };
 }
 
