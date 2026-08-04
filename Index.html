@@ -745,14 +745,14 @@
                             });
                         }
 
-                        if (currentTab === 'gestion' || avs.length > 0) {
+                        if (currentTab === 'gestion' || avs.length > 0 || (currentTab === 'reporte' && (st.alerta || st.bloqueante))) {
                             hasVisibleSubtask = true; hasVisibleContentForUser = true;
                             const box = document.createElement('div');
                             box.className = "level-2-box";
 
                             let html = `<div class="level-2-title">
                                 <span>${st.desc}`;
-                            if(currentTab === 'gestion') {
+                            if(currentTab === 'gestion' || currentTab === 'reporte') {
                                 if(st.alerta)     html += ` <span class="badge-opt" style="background:#fff3cd;color:#856404;border:1px solid #ffc107;">⚠️ Alerta</span>`;
                                 if(st.bloqueante) html += ` <span class="badge-opt" style="background:#f8d7da;color:#842029;border:1px solid #f5c2c7;">🔴 Bloqueante</span>`;
                             }
@@ -818,7 +818,12 @@
                         }
                     });
 
-                    if (currentTab === 'gestion' || hasVisibleSubtask) {
+                    // ── En modo reporte: mostrar alertas, bloqueantes y notas registradas de la tarea, incluso sin avances ──
+                    const alertasSt = subTareas.filter(st => st.alerta && st.alerta.trim());
+                    const bloqueantesSt = subTareas.filter(st => st.bloqueante && st.bloqueante.trim());
+                    const hasReportInfo = alertasSt.length > 0 || bloqueantesSt.length > 0 || !!notasData[t.id];
+
+                    if (currentTab === 'gestion' || hasVisibleSubtask || (currentTab === 'reporte' && hasReportInfo)) {
                         const tHeader = document.createElement('div'); tHeader.className = "level-1-header";
                         let hHtml = `<span>${t.desc}</span>`;
                         if(currentTab === 'gestion') {
@@ -844,8 +849,6 @@
                         // ── En modo reporte: mostrar alertas, bloqueantes y notas registradas de la tarea ──
                         const infoWrap = document.createElement('div');
                         if (currentTab === 'reporte') {
-                            const alertasSt = subTareas.filter(st => st.alerta && st.alerta.trim());
-                            const bloqueantesSt = subTareas.filter(st => st.bloqueante && st.bloqueante.trim());
                             let infoHtml = '';
                             if (alertasSt.length) {
                                 infoHtml += `<div class="nota-block" style="background:#fffbea;border-color:#ffe066;border-left-color:#f5a623;">
@@ -872,7 +875,7 @@
                         if (notaWrap.innerHTML) userBlock.appendChild(notaWrap);
                         if (infoWrap.innerHTML) userBlock.appendChild(infoWrap);
                         userBlock.appendChild(taskContent);
-                        if (currentTab === 'gestion') hasVisibleContentForUser = true;
+                        if (currentTab === 'gestion' || hasReportInfo) hasVisibleContentForUser = true;
                     }
                 });
                 if (hasVisibleContentForUser) {
