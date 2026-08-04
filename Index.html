@@ -735,7 +735,15 @@
                         if (currentTab === 'gestion' && st.estado === 'Terminada') return;
                         let avs = uData.filter(av => av.parentId === st.id);
                         if (currentTab === 'gestion') avs = avs.filter(av => av.estado !== 'Terminada' && av.estado !== 'Eliminada');
-                        else avs = avs.filter(av => av.estado !== 'Eliminada' && validateDate(av));
+                        else {
+                            avs = avs.filter(av => av.estado !== 'Eliminada' && validateDate(av));
+                            // Ordenar por fecha de inicio: de la más reciente a la más antigua
+                            avs = avs.slice().sort((a, b) => {
+                                const da = a.fechaInicio ? new Date(a.fechaInicio + 'T00:00:00').getTime() : -Infinity;
+                                const db = b.fechaInicio ? new Date(b.fechaInicio + 'T00:00:00').getTime() : -Infinity;
+                                return db - da;
+                            });
+                        }
 
                         if (currentTab === 'gestion' || avs.length > 0) {
                             hasVisibleSubtask = true; hasVisibleContentForUser = true;
@@ -781,9 +789,12 @@
                                     }
 
                                     if (currentTab === 'reporte') {
-                                        // ── Modo reporte: <details>/<summary> con detalle específico del avance ──
+                                        // ── Modo reporte: <details>/<summary> con fechas a la izquierda y detalle específico del avance ──
+                                        const fIni = av.fechaInicio || '-';
+                                        const fFin = av.fechaFin || 'En curso';
                                         html += `<details class="level-3-item-details">
                                             <summary>
+                                                <span class="small text-muted fw-bold flex-shrink-0" style="min-width:165px;">📅 ${fIni} → ${fFin}</span>
                                                 <span class="ck-content-render">${av.desc}${estadoLabel}</span>
                                             </summary>
                                             ${renderAvanceDetalleHtml(av)}
@@ -831,8 +842,36 @@
                             </div>`;
                         }
 
+                        // ── En modo reporte: mostrar alertas, bloqueantes y notas registradas de la tarea ──
+                        const infoWrap = document.createElement('div');
+                        if (currentTab === 'reporte') {
+                            const alertasSt = subTareas.filter(st => st.alerta && st.alerta.trim());
+                            const bloqueantesSt = subTareas.filter(st => st.bloqueante && st.bloqueante.trim());
+                            let infoHtml = '';
+                            if (alertasSt.length) {
+                                infoHtml += `<div class="nota-block" style="background:#fffbea;border-color:#ffe066;border-left-color:#f5a623;">
+                                    <div class="small fw-bold mb-1" style="color:#856404;">⚠️ Alertas</div>
+                                    ${alertasSt.map(st => `<div class="small mb-1"><em>${st.desc}</em>: ${st.alerta}</div>`).join('')}
+                                </div>`;
+                            }
+                            if (bloqueantesSt.length) {
+                                infoHtml += `<div class="nota-block" style="background:#f8d7da;border-color:#f5c2c7;border-left-color:#A6192E;">
+                                    <div class="small fw-bold mb-1" style="color:#842029;">🔴 Bloqueantes</div>
+                                    ${bloqueantesSt.map(st => `<div class="small mb-1"><em>${st.desc}</em>: ${st.bloqueante}</div>`).join('')}
+                                </div>`;
+                            }
+                            if (notasData[t.id]) {
+                                infoHtml += `<div class="nota-block ck-content-render">
+                                    <div class="small fw-bold mb-1" style="color:#856404;">📝 Notas</div>
+                                    ${notasData[t.id]}
+                                </div>`;
+                            }
+                            infoWrap.innerHTML = infoHtml;
+                        }
+
                         userBlock.appendChild(tHeader);
                         if (notaWrap.innerHTML) userBlock.appendChild(notaWrap);
+                        if (infoWrap.innerHTML) userBlock.appendChild(infoWrap);
                         userBlock.appendChild(taskContent);
                         if (currentTab === 'gestion') hasVisibleContentForUser = true;
                     }
