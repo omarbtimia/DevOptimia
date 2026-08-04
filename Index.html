@@ -789,13 +789,12 @@
                                     }
 
                                     if (currentTab === 'reporte') {
-                                        // ── Modo reporte: <details>/<summary> con fechas a la izquierda y detalle específico del avance ──
+                                        // ── Modo reporte: <details>/<summary> con la descripción y, al final, la fecha en cursiva ──
                                         const fIni = av.fechaInicio || '-';
                                         const fFin = av.fechaFin || 'En curso';
                                         html += `<details class="level-3-item-details">
                                             <summary>
-                                                <span class="small text-muted fw-bold flex-shrink-0" style="min-width:165px;">📅 ${fIni} → ${fFin}</span>
-                                                <span class="ck-content-render">${av.desc}${estadoLabel}</span>
+                                                <span class="ck-content-render">${av.desc}${estadoLabel} <em class="text-muted" style="font-size:0.78rem;">(📅 ${fIni} → ${fFin})</em></span>
                                             </summary>
                                             ${renderAvanceDetalleHtml(av)}
                                         </details>`;
