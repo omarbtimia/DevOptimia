@@ -8,6 +8,11 @@ const OPEN_ENTRY_HEADERS = [
   'Evidencia', 'Sin Entregable', 'Observaciones', 'Entregable', 'Interno'
 ];
 
+// Hojas y encabezados para notas / alertas / bloqueantes generales (no
+// asociados a una Tarea, Subtarea o Actividad).
+const GENERAL_SHEET = 'Generales';
+const GENERAL_HEADERS = ['ID', 'ID_Proyecto', 'Nota', 'Alerta', 'Bloqueante', 'Creado_Por', 'Fecha'];
+
 function ensureOpenEntriesSchema_(sheet) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(OPEN_ENTRY_HEADERS);
@@ -263,6 +268,120 @@ function saveNota(data) {
 }
 
 // ══════════════════════════════════════════════════
+//  GENERALES — notas / alertas / bloqueantes del proyecto
+//  No dependen de una Tarea, Subtarea o Actividad.
+// ══════════════════════════════════════════════════
+function getGeneralesSheet_() {
+  const ss = getDB();
+  let sheet = ss.getSheetByName(GENERAL_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(GENERAL_SHEET);
+    sheet.appendRow(GENERAL_HEADERS);
+    sheet.getRange(1, 1, 1, GENERAL_HEADERS.length).setFontWeight('bold');
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(GENERAL_HEADERS);
+  }
+  return sheet;
+}
+
+function fetchGenerales(projectId) {
+  const sheet = getGeneralesSheet_();
+  if (sheet.getLastRow() < 2) return [];
+  const tz = Session.getScriptTimeZone();
+  return sheet.getDataRange().getValues().slice(1)
+    .filter(r => r[0] && (!projectId || String(r[1]) === String(projectId)))
+    .map(r => ({
+      id:         r[0],
+      projectId:  r[1],
+      nota:       r[2] || '',
+      alerta:     r[3] || '',
+      bloqueante: r[4] || '',
+      creadoPor:  r[5] || '',
+      fecha:      r[6] instanceof Date ? Utilities.formatDate(r[6], tz, 'yyyy-MM-dd') : (r[6] || '')
+    }));
+}
+
+function saveGeneral(data) {
+  const sheet = getGeneralesSheet_();
+  const email = Session.getActiveUser().getEmail().toLowerCase();
+  const fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const values = sheet.getDataRange().getValues();
+  const rowIndex = data.id ? values.findIndex(r => String(r[0]) === String(data.id)) : -1;
+
+  if (rowIndex !== -1) {
+    sheet.getRange(rowIndex + 1, 2).setValue(data.projectId || '');
+    sheet.getRange(rowIndex + 1, 3).setValue(data.nota || '');
+    sheet.getRange(rowIndex + 1, 4).setValue(data.alerta || '');
+    sheet.getRange(rowIndex + 1, 5).setValue(data.bloqueante || '');
+    registrarAuditoria('EDITAR', 'General', data.id, `Proyecto: ${data.projectId || '-'}`);
+    return { success: true, generales: fetchGenerales(data.projectId) };
+  }
+
+  const newId = Utilities.getUuid();
+  sheet.appendRow([newId, data.projectId || '', data.nota || '', data.alerta || '', data.bloqueante || '', email, fecha]);
+  registrarAuditoria('CREAR', 'General', newId, `Proyecto: ${data.projectId || '-'}`);
+  return { success: true, generales: fetchGenerales(data.projectId) };
+}
+
+function deleteGeneral(id, projectId) {
+  const sheet = getGeneralesSheet_();
+  const values = sheet.getDataRange().getValues();
+  for (let i = values.length - 1; i >= 1; i--) {
+    if (String(values[i][0]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      registrarAuditoria('ELIMINAR', 'General', id, `Proyecto: ${projectId || values[i][1] || '-'}`);
+      return { success: true, generales: fetchGenerales(projectId) };
+    }
+  }
+  return { success: false, generales: fetchGenerales(projectId) };
+}
+
+// ══════════════════════════════════════════════════
+//  ELIMINACIÓN JERÁRQUICA — Tarea / Subtarea / Actividad
+//  Marca el registro como 'Eliminada' y arrastra a sus descendientes.
+// ══════════════════════════════════════════════════
+function deleteEntry(owner, id) {
+  const ss = getDB();
+  const sheet = ss.getSheetByName(owner);
+  if (!sheet) return { success: false };
+  ensureOpenEntriesSchema_(sheet);
+
+  const values = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][0]) === String(id)) { rowIndex = i; break; }
+  }
+  if (rowIndex === -1) return { success: false };
+
+  const tipo = String(values[rowIndex][1] || 'Entrada');
+  sheet.getRange(rowIndex + 1, 7).setValue('Eliminada');
+
+  const ids = [String(id)];
+  const sheets = ss.getSheets();
+  for (let cursor = 0; cursor < ids.length; cursor++) {
+    const parentId = ids[cursor];
+    for (let s = 0; s < sheets.length; s++) {
+      const sh = sheets[s];
+      if (RESERVED_SHEETS_.indexOf(sh.getName()) !== -1) continue;
+      if (sh.getLastRow() < 2) continue;
+      const rows = sh.getDataRange().getValues();
+      for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][2]) === parentId) {
+          const childId = String(rows[i][0]);
+          if (ids.indexOf(childId) === -1) {
+            ids.push(childId);
+            if (String(rows[i][6]) !== 'Eliminada') sh.getRange(i + 1, 7).setValue('Eliminada');
+          }
+        }
+      }
+    }
+  }
+
+  registrarAuditoria('ELIMINAR', tipo, id, `Owner: ${owner} | Descendientes: ${ids.length - 1}`);
+  return { success: true };
+}
+
+// ══════════════════════════════════════════════════
 //  JUSTIFICACIÓN DE ATRASO — avances abiertos > 7 días
 //  Almacena en columna 19 (Observaciones) del avance, separadas por "homoplato"
 //  Formato de cada entrada: [FECHA]::TEXTO
@@ -291,7 +410,7 @@ function saveAtrasoAvance(data) {
 // ══════════════════════════════════════════════════
 //  VALIDACIÓN DE JERARQUÍA — no cerrar padres con hijos abiertos
 // ══════════════════════════════════════════════════
-const RESERVED_SHEETS_ = ['Usuarios', 'Proyectos', 'Categorias', 'Asignaciones', 'Auditoria'];
+const RESERVED_SHEETS_ = ['Usuarios', 'Proyectos', 'Categorias', 'Asignaciones', 'Auditoria', GENERAL_SHEET];
 
 // Busca en TODAS las hojas de owners (Tareas/Subtareas/Avances pueden
 // estar asignadas a usuarios distintos del padre) si existe algún hijo
@@ -336,9 +455,16 @@ function saveOrUpdateEntry(data) {
   }
 
   const hoy      = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const prev     = esNuevo ? [] : values[rowIndex];
   const fechaInicio = esNuevo
     ? (data.fechaInicio || hoy)
-    : (data.fechaInicio || values[rowIndex][4] || hoy);
+    : (data.fechaInicio || prev[4] || hoy);
+
+  // Las notas se gestionan con saveNota(); al modificar una entrada desde el
+  // modal no se envían, por lo que se conserva el valor existente.
+  const nota = (data.nota !== undefined && data.nota !== null)
+    ? data.nota
+    : (esNuevo ? '' : (prev[11] || ''));
 
   const newRow = [
       entryId,
@@ -352,7 +478,7 @@ function saveOrUpdateEntry(data) {
       data.alerta     || '',
       data.bloqueante || '',
       data.categoria  || '',
-      data.nota       || '',
+      nota,
       data.jira       || '',
       data.msd        || '',
       data.espTecnica || '',
