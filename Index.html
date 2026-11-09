@@ -783,7 +783,7 @@
                                             const tip = bloqueado
                                                 ? `title="Ya justificado. Disponible en ${info.diasRestantes} día(s)"`
                                                 : `title="Avance sin cerrar hace ${info.diasAtraso} días. Haz clic para justificar"`;
-                                            const click = bloqueado ? '' : `onclick="abrirAtraso('${av.id}','${av.owner}','${av.desc.replace(/'/g,"\\'").substring(0,40)}')"`;
+                                            const click = bloqueado ? '' : `onclick="abrirAtraso('${av.id}')"`;
                                             badgeAtraso = ` <span class="${cls}" ${tip} ${click}>⏰ ${info.diasAtraso}d</span>`;
                                         }
                                     }
@@ -806,7 +806,7 @@
                                                 html += `<span class="badge-opt ${stClass}">${av.estado}</span>`;
                                         if(av.owner === currentUserEmail) {
                                             html += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${av.id}')">✏️ Editar</button>`;
-                                            html += `<button class="btn btn-sm btn-outline-danger px-2;font-size:10px;white-space:nowrap;" onclick="eliminarAvance('${av.id}','${av.desc.replace(/'/g,"\\'").substring(0,40)}')">🗑️ Eliminar</button>`;
+                                            html += `<button class="btn btn-sm btn-outline-danger px-2" style="font-size:10px;white-space:nowrap;" onclick="eliminarAvance('${av.id}')">🗑️ Eliminar</button>`;
                                         }
                                         html += `</div>`;
                                         html += `</div>`;
@@ -830,7 +830,7 @@
                             hHtml += `<div class='actions-wrap' style='gap:4px;'>`;
                             if(t.owner === currentUserEmail)
                                 hHtml += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${t.id}')">✏️ Editar</button>`;
-                            hHtml += `<button class='btn btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;background:#fffbea;color:#856404;border:1px solid #ffe066;' onclick="abrirNota('${t.id}','${t.desc.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">📝 Notas</button>`;
+                            hHtml += `<button class='btn btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;background:#fffbea;color:#856404;border:1px solid #ffe066;' onclick="abrirNota('${t.id}')">📝 Notas</button>`;
                             hHtml += `<button class='btn btn-primary btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;' onclick="openModal('Subtarea','${t.id}','')">+ Subtarea</button>`;
                             hHtml += `</div>`;
                         }
@@ -1090,9 +1090,10 @@
             .saveOrUpdateEntry(data);
     }
 
-    function abrirNota(tareaId, tareaDesc) {
+    function abrirNota(tareaId) {
+        const tarea = rawData.find(e => e.id === tareaId);
         document.getElementById('nTareaId').value = tareaId;
-        document.getElementById('notaSubtitle').innerText = tareaDesc;
+        document.getElementById('notaSubtitle').innerText = tarea ? String(tarea.desc || '').replace(/<[^>]*>/g, '').trim() : '';
         const contenido = notasData[tareaId] || '';
         if (ckNota) ckNota.setData(contenido);
         else window._pendingNotaData = contenido;
@@ -1111,10 +1112,11 @@
             .saveNota({ tareaId, owner: tarea.owner, contenido });
     }
 
-    function eliminarAvance(id, desc) {
-        if (!confirm(`¿Eliminar esta actividad?\n\n"${desc}..."\n\nEsta acción es lógica y no se mostrará en la vista de gestión.`)) return;
+    function eliminarAvance(id) {
         const av = rawData.find(e => e.id === id);
         if (!av) return;
+        const desc = String(av.desc || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().substring(0, 40);
+        if (!confirm(`¿Eliminar esta actividad?\n\n"${desc}..."\n\nEsta acción es lógica y no se mostrará en la vista de gestión.`)) return;
         showL(true);
         const data = {
             userOwner:   av.owner,
@@ -1215,14 +1217,14 @@
         return { enAtraso: true, diasAtraso, puedeJustificar, diasRestantes, historial };
     }
 
-    function abrirAtraso(avanceId, owner, desc) {
+    function abrirAtraso(avanceId) {
         const av = rawData.find(e => e.id === avanceId);
         if (!av) return;
         const info = calcularInfoAtraso(av);
 
         document.getElementById('atrasoAvanceId').value = avanceId;
-        document.getElementById('atrasoOwner').value    = owner;
-        document.getElementById('atrasoSubtitle').innerText = desc;
+        document.getElementById('atrasoOwner').value    = av.owner;
+        document.getElementById('atrasoSubtitle').innerText = String(av.desc || '').replace(/<[^>]*>/g, '').trim();
         document.getElementById('atrasoTexto').value    = '';
         document.getElementById('atrasoBloqueoMsg').style.display = 'none';
 
