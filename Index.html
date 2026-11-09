@@ -29,6 +29,11 @@
         .st-done { background: var(--optimia-red); color: white; }
         .st-process { background: #e9ecef; color: var(--optimia-black); }
         .st-block { background: var(--optimia-black); color: white; }
+        .st-pause { background: #f5a623; color: white; }
+        .general-card { background:#fff; border:1px solid #dee2e6; border-left:4px solid #4b69ff; border-radius:0 6px 6px 0; padding:10px 14px; margin-bottom:8px; }
+        .general-nota { white-space: pre-wrap; }
+        .reporte-info { font-size:0.82rem; margin-top:6px; }
+        .reporte-info .nota-block { margin-top:6px; }
         #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }
         .select2-container { width: 100% !important; }
         .select2-container--default .select2-selection--single { height: 31px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 0.875rem; }
@@ -187,6 +192,38 @@
     </div>
 </div>
 
+<div class="modal fade" id="generalModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:var(--optimia-black);color:white;border-bottom:3px solid #4b69ff;">
+                <div>
+                    <h6 class="modal-title fw-bold mb-0">📌 Información general del proyecto</h6>
+                    <p class="small mb-0 mt-1" style="color:rgba(255,255,255,0.65);">Notas, alertas y bloqueantes no asociados a una tarea, subtarea o actividad.</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="genId">
+                <div class="mb-2">
+                    <label class="small fw-bold">📝 Nota general</label>
+                    <textarea id="genNota" class="form-control form-control-sm" rows="3" spellcheck="true" placeholder="Escribe una nota general..."></textarea>
+                </div>
+                <div class="mb-2">
+                    <label class="small fw-bold">⚠️ Alerta general</label>
+                    <textarea id="genAlerta" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Describe la alerta general si existe..."></textarea>
+                </div>
+                <div class="mb-2">
+                    <label class="small fw-bold">🔴 Bloqueante general</label>
+                    <textarea id="genBloqueante" class="form-control form-control-sm" rows="2" spellcheck="true" placeholder="Describe el bloqueante general si existe..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-danger fw-bold px-4" onclick="guardarGeneral()">💾 GUARDAR</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="reporteModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
@@ -282,7 +319,7 @@
 <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
-    var rawData = [], userList = [], categorias = [], notasData = {}, currentTab = 'gestion', mEntry, mNota, mDetail, mAtraso, currentUserEmail = "", userRole = "", hasProjects = false, ckEditor = null, ckNota = null;
+    var rawData = [], userList = [], categorias = [], notasData = {}, generalesData = [], currentTab = 'gestion', mEntry, mNota, mDetail, mAtraso, mGeneral, currentUserEmail = "", userRole = "", hasProjects = false, ckEditor = null, ckNota = null;
     var estadoData = [], chartEstadoDona = null, chartEstadoCategoria = null;
     var proyectosData = [], asignacionesData = [];
 
@@ -291,6 +328,7 @@
         mNota  = new bootstrap.Modal(document.getElementById('notaModal'));
         mDetail = new bootstrap.Modal(document.getElementById('subtaskDetailModal'));
         mAtraso = new bootstrap.Modal(document.getElementById('alertaAtrasoModal'));
+        mGeneral = new bootstrap.Modal(document.getElementById('generalModal'));
 
         document.getElementById('notaModal').addEventListener('shown.bs.modal', () => {
             if (!ckNota) {
@@ -418,14 +456,22 @@
         if (currentTab === 'estado') { loadEstadoGeneral(); return; }
         showL(true);
         const u = document.getElementById('userSelect').value, p = document.getElementById('projSelect').value;
-        const cb = data => {
-            rawData = data;
+        const finish = (data, generales) => {
+            rawData = data || [];
+            generalesData = generales || [];
             notasData = {};
             rawData.filter(e => e.tipo === 'Tarea' && e.nota).forEach(t => { notasData[t.id] = t.nota; });
             renderUI(); showL(false);
         };
-        if (u === "TODOS") google.script.run.withSuccessHandler(cb).fetchAllEntries(userList, p);
-        else google.script.run.withSuccessHandler(cb).fetchEntries(u, p);
+        const cb = data => {
+            google.script.run
+                .withSuccessHandler(generales => finish(data, generales))
+                .withFailureHandler(() => finish(data, []))
+                .fetchGenerales(p);
+        };
+        const fail = err => { showL(false); alert('Error: ' + err.message); };
+        if (u === "TODOS") google.script.run.withSuccessHandler(cb).withFailureHandler(fail).fetchAllEntries(userList, p);
+        else google.script.run.withSuccessHandler(cb).withFailureHandler(fail).fetchEntries(u, p);
     }
 
     function validateDate(av) {
@@ -454,9 +500,44 @@
         return { texto: `${av.fechaInicio} hasta ${finLabel}`, dias };
     }
 
+    // ── Utilidades de estado / texto ──
+    function estadoBadgeClass(estado) {
+        if (estado === 'Terminada') return 'st-done';
+        if (estado === 'Bloqueada') return 'st-block';
+        if (estado === 'En Pausa')  return 'st-pause';
+        return 'st-process';
+    }
+
+    function estadoBadgeHtml(estado) {
+        if (!estado) return '';
+        const clase = estadoBadgeClass(estado);
+        return `<span class="badge-opt ${clase}">${estado}</span>`;
+    }
+
+    // Badge de estado usado en el reporte para correo (incluye "En Pausa").
+    function reporteEstadoBadge(estado) {
+        if (!estado || estado === 'En proceso') return '';
+        const estilos = {
+            'Terminada': 'color:#212529;font-weight:700;',
+            'Bloqueada': 'color:#A6192E;font-weight:700;',
+            'En Pausa':  'color:#856404;font-weight:700;'
+        };
+        const style = estilos[estado] || 'color:#6c757d;font-weight:700;';
+        const label = estado === 'Bloqueada' ? 'BLOQUEADA' : estado.toUpperCase();
+        return ` <span style="${style}">[${label}]</span>`;
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function nl2br(s) { return escapeHtml(s).replace(/\r?\n/g, '<br>'); }
+
     // Genera el HTML de detalle específico de UN avance (usado dentro del <details> del reporte).
     function renderAvanceDetalleHtml(av) {
-        const badgeClass = av.estado === 'Terminada' ? 'bg-danger' : (av.estado === 'Bloqueada' ? 'bg-dark' : 'bg-secondary');
+        const badgeClass = av.estado === 'Terminada' ? 'bg-danger' : (av.estado === 'Bloqueada' ? 'bg-dark' : (av.estado === 'En Pausa' ? 'bg-warning text-dark' : 'bg-secondary'));
         const obsInfo = separarObservacionesYAtrasos(av.observaciones || '');
         const vigencia = calcularVigenciaAvance(av);
         const atrasosHtml = obsInfo.atrasos.length
@@ -719,21 +800,23 @@
         const selUser = document.getElementById('userSelect').value;
         const targets = (selUser === "TODOS") ? userList : [selUser];
 
+        if (currentTab === 'gestion') renderGenerales(cont);
+
         targets.forEach(user => {
-            const uData = rawData.filter(d => d.owner === user);
+            const uData = rawData.filter(d => d.owner === user && d.estado !== 'Eliminada');
             if (uData.length > 0) {
                 const userBlock = document.createElement('div');
                 let hasVisibleContentForUser = false;
 
-                uData.filter(e => e.tipo === 'Tarea').forEach(t => {
+                uData.filter(e => e.tipo === 'Tarea' && e.estado !== 'Eliminada').forEach(t => {
                     if (currentTab === 'gestion' && t.estado === 'Terminada') return;
-                    const subTareas = uData.filter(st => st.parentId === t.id);
+                    const subTareas = uData.filter(st => st.tipo === 'Subtarea' && st.parentId === t.id && st.estado !== 'Eliminada');
                     let hasVisibleSubtask = false;
                     const taskContent = document.createElement('div');
 
                     subTareas.forEach(st => {
                         if (currentTab === 'gestion' && st.estado === 'Terminada') return;
-                        let avs = uData.filter(av => av.parentId === st.id);
+                        let avs = uData.filter(av => av.tipo === 'Avance' && av.parentId === st.id);
                         if (currentTab === 'gestion') avs = avs.filter(av => av.estado !== 'Terminada' && av.estado !== 'Eliminada');
                         else {
                             avs = avs.filter(av => av.estado !== 'Eliminada' && validateDate(av));
@@ -752,15 +835,19 @@
 
                             let html = `<div class="level-2-title">
                                 <span>${st.desc}`;
+                            if(st.estado && st.estado !== 'En proceso') html += ` ${estadoBadgeHtml(st.estado)}`;
                             if(currentTab === 'gestion' || currentTab === 'reporte') {
                                 if(st.alerta)     html += ` <span class="badge-opt" style="background:#fff3cd;color:#856404;border:1px solid #ffc107;">⚠️ Alerta</span>`;
                                 if(st.bloqueante) html += ` <span class="badge-opt" style="background:#f8d7da;color:#842029;border:1px solid #f5c2c7;">🔴 Bloqueante</span>`;
                             }
                             html += `</span>`;
                             if(currentTab === 'gestion') {
+                                const puedeModificarSt = (st.owner === currentUserEmail || userRole === 'Líder');
                                 html += `<div class="actions-wrap" style="gap:4px;">`;
-                                if(st.owner === currentUserEmail)
+                                if(puedeModificarSt) {
                                     html += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${st.id}')">✏️ Editar</button>`;
+                                    html += `<button class="btn btn-sm btn-outline-danger px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="eliminarEntrada('${st.id}')">🗑️ Eliminar</button>`;
+                                }
                                 html += `<button class="btn btn-danger btn-sm px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="openModal('Avance','${st.id}','')">+ Actividad</button>`;
                                 html += `</div>`;
                             }
@@ -769,7 +856,7 @@
                             if(avs.length > 0) {
                                 html += `<div class="level-3-list">`;
                                 avs.forEach(av => {
-                                    const stClass = av.estado === 'Terminada' ? 'st-done' : (av.estado === 'Bloqueada' ? 'st-block' : 'st-process');
+                                    const stClass = estadoBadgeClass(av.estado);
                                     const fechaLabel = av.fechaInicio ? `<span class="small text-muted ms-1" style="font-size:0.72rem;">📅 ${av.fechaInicio}</span>` : '';
                                     const estadoLabel = currentTab === 'reporte' ? ` <span class="small fw-bold text-muted">(${av.estado})</span>` : '';
 
@@ -783,7 +870,7 @@
                                             const tip = bloqueado
                                                 ? `title="Ya justificado. Disponible en ${info.diasRestantes} día(s)"`
                                                 : `title="Avance sin cerrar hace ${info.diasAtraso} días. Haz clic para justificar"`;
-                                            const click = bloqueado ? '' : `onclick="abrirAtraso('${av.id}','${av.owner}','${av.desc.replace(/'/g,"\\'").substring(0,40)}')"`;
+                                            const click = bloqueado ? '' : `onclick="abrirAtraso('${av.id}')"`;
                                             badgeAtraso = ` <span class="${cls}" ${tip} ${click}>⏰ ${info.diasAtraso}d</span>`;
                                         }
                                     }
@@ -804,9 +891,9 @@
                                         html += `<div class="actions-wrap" style="gap:4px;">`;
                                             if(av.estado !== 'En proceso')
                                                 html += `<span class="badge-opt ${stClass}">${av.estado}</span>`;
-                                        if(av.owner === currentUserEmail) {
+                                        if(av.owner === currentUserEmail || userRole === 'Líder') {
                                             html += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${av.id}')">✏️ Editar</button>`;
-                                            html += `<button class="btn btn-sm btn-outline-danger px-2;font-size:10px;white-space:nowrap;" onclick="eliminarAvance('${av.id}','${av.desc.replace(/'/g,"\\'").substring(0,40)}')">🗑️ Eliminar</button>`;
+                                            html += `<button class="btn btn-sm btn-outline-danger px-2" style="font-size:10px;white-space:nowrap;" onclick="eliminarEntrada('${av.id}')">🗑️ Eliminar</button>`;
                                         }
                                         html += `</div>`;
                                         html += `</div>`;
@@ -821,16 +908,22 @@
                     // ── En modo reporte: mostrar alertas, bloqueantes y notas registradas de la tarea, incluso sin avances ──
                     const alertasSt = subTareas.filter(st => st.alerta && st.alerta.trim());
                     const bloqueantesSt = subTareas.filter(st => st.bloqueante && st.bloqueante.trim());
-                    const hasReportInfo = alertasSt.length > 0 || bloqueantesSt.length > 0 || !!notasData[t.id];
+                    const hasReportInfo = alertasSt.length > 0 || bloqueantesSt.length > 0 || !!notasData[t.id] ||
+                        !!(t.alerta && t.alerta.trim()) || !!(t.bloqueante && t.bloqueante.trim());
 
                     if (currentTab === 'gestion' || hasVisibleSubtask || (currentTab === 'reporte' && hasReportInfo)) {
                         const tHeader = document.createElement('div'); tHeader.className = "level-1-header";
-                        let hHtml = `<span>${t.desc}</span>`;
+                        let hHtml = `<span>${t.desc}`;
+                        if(t.estado && t.estado !== 'En proceso') hHtml += ` ${estadoBadgeHtml(t.estado)}`;
+                        hHtml += `</span>`;
                         if(currentTab === 'gestion') {
+                            const puedeModificarT = (t.owner === currentUserEmail || userRole === 'Líder');
                             hHtml += `<div class='actions-wrap' style='gap:4px;'>`;
-                            if(t.owner === currentUserEmail)
+                            if(puedeModificarT) {
                                 hHtml += `<button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="edit('${t.id}')">✏️ Editar</button>`;
-                            hHtml += `<button class='btn btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;background:#fffbea;color:#856404;border:1px solid #ffe066;' onclick="abrirNota('${t.id}','${t.desc.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')">📝 Notas</button>`;
+                                hHtml += `<button class="btn btn-sm btn-outline-danger px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="eliminarEntrada('${t.id}')">🗑️ Eliminar</button>`;
+                            }
+                            hHtml += `<button class='btn btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;background:#fffbea;color:#856404;border:1px solid #ffe066;' onclick="abrirNota('${t.id}')">📝 Notas</button>`;
                             hHtml += `<button class='btn btn-primary btn-sm px-2' style='height:24px;font-size:10px;white-space:nowrap;' onclick="openModal('Subtarea','${t.id}','')">+ Subtarea</button>`;
                             hHtml += `</div>`;
                         }
@@ -850,15 +943,17 @@
                         const infoWrap = document.createElement('div');
                         if (currentTab === 'reporte') {
                             let infoHtml = '';
-                            if (alertasSt.length) {
+                            if ((t.alerta && t.alerta.trim()) || alertasSt.length) {
                                 infoHtml += `<div class="nota-block" style="background:#fffbea;border-color:#ffe066;border-left-color:#f5a623;">
                                     <div class="small fw-bold mb-1" style="color:#856404;">⚠️ Alertas</div>
+                                    ${t.alerta && t.alerta.trim() ? `<div class="small mb-1"><em>Tarea</em>: ${t.alerta}</div>` : ''}
                                     ${alertasSt.map(st => `<div class="small mb-1"><em>${st.desc}</em>: ${st.alerta}</div>`).join('')}
                                 </div>`;
                             }
-                            if (bloqueantesSt.length) {
+                            if ((t.bloqueante && t.bloqueante.trim()) || bloqueantesSt.length) {
                                 infoHtml += `<div class="nota-block" style="background:#f8d7da;border-color:#f5c2c7;border-left-color:#A6192E;">
                                     <div class="small fw-bold mb-1" style="color:#842029;">🔴 Bloqueantes</div>
+                                    ${t.bloqueante && t.bloqueante.trim() ? `<div class="small mb-1"><em>Tarea</em>: ${t.bloqueante}</div>` : ''}
                                     ${bloqueantesSt.map(st => `<div class="small mb-1"><em>${st.desc}</em>: ${st.bloqueante}</div>`).join('')}
                                 </div>`;
                             }
@@ -886,6 +981,80 @@
             }
         });
         if (cont.innerHTML === "") cont.innerHTML = "<div class='text-center py-5 text-muted'>Sin información para mostrar.</div>";
+    }
+
+    // ══════════════════════════════════════════════════
+    //  GENERALES — notas / alertas / bloqueantes del proyecto
+    // ══════════════════════════════════════════════════
+    function renderGenerales(cont) {
+        const wrap = document.createElement('div');
+        wrap.className = 'filter-card mb-3';
+        wrap.style.display = 'block';
+
+        const gs = generalesData || [];
+        let html = `<div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0">📌 Información general del proyecto</h6>
+            <button class="btn btn-sm btn-outline-primary fw-bold" onclick="abrirGeneral()">+ Nota / Alerta / Bloqueante</button>
+        </div>`;
+
+        if (!gs.length) {
+            html += `<div class="text-muted small">Sin notas, alertas ni bloqueantes generales registrados.</div>`;
+        } else {
+            gs.forEach(g => {
+                html += `<div class="general-card">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <span class="small text-muted">${g.fecha || ''}${g.creadoPor ? ' · ' + g.creadoPor : ''}</span>
+                        <div class="actions-wrap" style="gap:4px;">
+                            <button class="btn btn-sm btn-outline-secondary px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="abrirGeneral('${g.id}')">✏️ Editar</button>
+                            <button class="btn btn-sm btn-outline-danger px-2" style="height:24px;font-size:10px;white-space:nowrap;" onclick="eliminarGeneral('${g.id}')">🗑️ Eliminar</button>
+                        </div>
+                    </div>
+                    ${g.nota ? `<div class="mt-1"><span class="small fw-bold" style="color:#856404;">📝 Nota:</span><div class="general-nota small">${escapeHtml(g.nota)}</div></div>` : ''}
+                    ${g.alerta ? `<div class="mt-1 nota-block" style="margin-top:6px;"><span class="small fw-bold" style="color:#856404;">⚠️ Alerta:</span><div class="small" style="white-space:pre-wrap;">${escapeHtml(g.alerta)}</div></div>` : ''}
+                    ${g.bloqueante ? `<div class="mt-1 nota-block" style="background:#f8d7da;border-color:#f5c2c7;border-left-color:#A6192E;margin-top:6px;"><span class="small fw-bold" style="color:#842029;">🔴 Bloqueante:</span><div class="small" style="white-space:pre-wrap;">${escapeHtml(g.bloqueante)}</div></div>` : ''}
+                </div>`;
+            });
+        }
+
+        wrap.innerHTML = html;
+        cont.appendChild(wrap);
+    }
+
+    function abrirGeneral(id) {
+        const g = id ? generalesData.find(x => String(x.id) === String(id)) : null;
+        document.getElementById('genId').value          = g ? g.id : '';
+        document.getElementById('genNota').value        = g ? (g.nota || '') : '';
+        document.getElementById('genAlerta').value      = g ? (g.alerta || '') : '';
+        document.getElementById('genBloqueante').value  = g ? (g.bloqueante || '') : '';
+        mGeneral.show();
+    }
+
+    function guardarGeneral() {
+        const data = {
+            id:         document.getElementById('genId').value,
+            projectId:  document.getElementById('projSelect').value,
+            nota:       document.getElementById('genNota').value.trim(),
+            alerta:     document.getElementById('genAlerta').value.trim(),
+            bloqueante: document.getElementById('genBloqueante').value.trim()
+        };
+        if (!data.nota && !data.alerta && !data.bloqueante) {
+            alert('⚠️ Ingresa al menos una nota, alerta o bloqueante.');
+            return;
+        }
+        showL(true);
+        google.script.run
+            .withSuccessHandler(() => { mGeneral.hide(); loadData(); })
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .saveGeneral(data);
+    }
+
+    function eliminarGeneral(id) {
+        if (!confirm('¿Eliminar este registro general?')) return;
+        showL(true);
+        google.script.run
+            .withSuccessHandler(() => loadData())
+            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
+            .deleteGeneral(id, document.getElementById('projSelect').value);
     }
 
     function onEstadoChange() {
@@ -931,7 +1100,7 @@
         document.getElementById('fModalBtn').innerText = isEdit ? `GUARDAR CAMBIOS` : `REGISTRAR ${label.toUpperCase()}`;
 
         const camposAlerta = document.getElementById('fCamposAlerta');
-        camposAlerta.style.display = t === 'Subtarea' ? 'block' : 'none';
+        camposAlerta.style.display = 'block';
         document.getElementById('fAlerta').value     = alerta;
         document.getElementById('fBloqueante').value = bloqueante;
 
@@ -1090,9 +1259,10 @@
             .saveOrUpdateEntry(data);
     }
 
-    function abrirNota(tareaId, tareaDesc) {
+    function abrirNota(tareaId) {
+        const tarea = rawData.find(e => e.id === tareaId);
         document.getElementById('nTareaId').value = tareaId;
-        document.getElementById('notaSubtitle').innerText = tareaDesc;
+        document.getElementById('notaSubtitle').innerText = tarea ? String(tarea.desc || '').replace(/<[^>]*>/g, '').trim() : '';
         const contenido = notasData[tareaId] || '';
         if (ckNota) ckNota.setData(contenido);
         else window._pendingNotaData = contenido;
@@ -1111,35 +1281,19 @@
             .saveNota({ tareaId, owner: tarea.owner, contenido });
     }
 
-    function eliminarAvance(id, desc) {
-        if (!confirm(`¿Eliminar esta actividad?\n\n"${desc}..."\n\nEsta acción es lógica y no se mostrará en la vista de gestión.`)) return;
-        const av = rawData.find(e => e.id === id);
-        if (!av) return;
+    function eliminarEntrada(id) {
+        const item = rawData.find(e => String(e.id) === String(id));
+        if (!item) return;
+        const tipoLabel = item.tipo === 'Tarea' ? 'tarea' : (item.tipo === 'Subtarea' ? 'subtarea' : 'actividad');
+        const desc = String(item.desc || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().substring(0, 40);
+        const tieneHijos = rawData.some(e => String(e.parentId) === String(id) && e.estado !== 'Eliminada');
+        const extra = tieneHijos ? '\n\nTambién se eliminarán los elementos dependientes.' : '';
+        if (!confirm(`¿Eliminar esta ${tipoLabel}?\n\n"${desc}..."\n\nEsta acción es lógica y no se mostrará en la vista de gestión.${extra}`)) return;
         showL(true);
-        const data = {
-            userOwner:   av.owner,
-            projectId:   av.projectId,
-            id:          av.id,
-            tipo:        av.tipo,
-            parentId:    av.parentId,
-            desc:        av.desc,
-            fechaInicio: av.fechaInicio,
-            fechaFin:    av.fechaFin,
-            estado:      'Eliminada',
-            alerta:       av.alerta     || '',
-            bloqueante:   av.bloqueante || '',
-            categoria:    av.categoria  || '',
-            nota:         av.nota       || '',
-            evidencia:    av.evidencia  || '',
-            entregable:   av.entregable || '',
-            sinEntregable:av.sinEntregable || false,
-            interno:      av.interno    || false,
-            observaciones:av.observaciones || ''
-        };
         google.script.run
             .withSuccessHandler(() => loadData())
             .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
-            .saveOrUpdateEntry(data);
+            .deleteEntry(item.owner, item.id);
     }
 
     function showL(s) { document.getElementById('loading').style.display = s ? 'flex' : 'none'; }
@@ -1215,14 +1369,14 @@
         return { enAtraso: true, diasAtraso, puedeJustificar, diasRestantes, historial };
     }
 
-    function abrirAtraso(avanceId, owner, desc) {
+    function abrirAtraso(avanceId) {
         const av = rawData.find(e => e.id === avanceId);
         if (!av) return;
         const info = calcularInfoAtraso(av);
 
         document.getElementById('atrasoAvanceId').value = avanceId;
-        document.getElementById('atrasoOwner').value    = owner;
-        document.getElementById('atrasoSubtitle').innerText = desc;
+        document.getElementById('atrasoOwner').value    = av.owner;
+        document.getElementById('atrasoSubtitle').innerText = String(av.desc || '').replace(/<[^>]*>/g, '').trim();
         document.getElementById('atrasoTexto').value    = '';
         document.getElementById('atrasoBloqueoMsg').style.display = 'none';
 
@@ -1276,52 +1430,55 @@
         const cont    = document.getElementById('reporteContenido');
         cont.innerHTML = '';
 
+        let reporteHtml = '';
+
         targets.forEach(user => {
-            const uData = rawData.filter(d => d.owner === user);
+            const uData = rawData.filter(d => d.owner === user && d.estado !== 'Eliminada');
             if (!uData.length) return;
 
-            uData.filter(e => e.tipo === 'Tarea').forEach(t => {
-                const subTareas = uData.filter(st => st.parentId === t.id);
+            uData.filter(e => e.tipo === 'Tarea' && e.estado !== 'Eliminada').forEach(t => {
+                const subTareas = uData.filter(st => st.tipo === 'Subtarea' && st.parentId === t.id && st.estado !== 'Eliminada');
                 let tareaHtml = '';
 
                 subTareas.forEach(st => {
-                    let avs = uData.filter(av => av.parentId === st.id)
-               .filter(av => av.estado !== 'Eliminada' && validateDate(av) && !av.interno);
+                    const avs = uData.filter(av =>
+                        av.tipo === 'Avance' && av.parentId === st.id &&
+                        av.estado !== 'Eliminada' && validateDate(av) && !av.interno
+                    );
                     if (!avs.length) return;
 
-                    const avsHtml = avs.map(av => {
-                        const estadoBadge = av.estado === 'Bloqueada'
-                            ? ' <span style="color:#A6192E;font-weight:700;">[BLOQUEADA]</span>'
-                            : av.estado === 'Terminada'
-                            ? ' <span style="color:#212529;font-weight:700;">[Terminada]</span>'
-                            : '';
-                        let descConBadge = av.desc;
-                        if (estadoBadge) {
-                            const lastClose = descConBadge.lastIndexOf('</');
-                            descConBadge = lastClose !== -1
-                                ? descConBadge.slice(0, lastClose) + estadoBadge + descConBadge.slice(lastClose)
-                                : descConBadge + estadoBadge;
-                        }
-                        return `<li>${descConBadge}</li>`;
-                    }).join('');
-
-                    tareaHtml += `<li><span style="font-weight:600;">${st.desc}</span><ul>${avsHtml}</ul></li>`;
+                    const avsHtml = avs.map(av => `<li>${av.desc}${reporteEstadoBadge(av.estado)}</li>`).join('');
+                    tareaHtml += `<li><span style="font-weight:600;">${st.desc}</span>${reporteEstadoBadge(st.estado)}<ul>${avsHtml}</ul></li>`;
                 });
 
-                if (tareaHtml) {
-                    cont.innerHTML += `<div><p><strong>${t.desc}</strong></p><ul>${tareaHtml}</ul></div>`;
+                const notaTarea       = notasData[t.id];
+                const alertaTarea     = t.alerta && t.alerta.trim() ? t.alerta : '';
+                const bloqueanteTarea = t.bloqueante && t.bloqueante.trim() ? t.bloqueante : '';
+
+                // Las tareas también se reportan aunque no tengan actividades, si
+                // tienen notas, alertas o bloqueantes propios.
+                if (!tareaHtml && !notaTarea && !alertaTarea && !bloqueanteTarea) return;
+
+                let bloque = `<div><p><strong>${t.desc}</strong>${reporteEstadoBadge(t.estado)}</p>`;
+                if (tareaHtml) bloque += `<ul>${tareaHtml}</ul>`;
+                if (alertaTarea)     bloque += `<p class="reporte-info">⚠️ <strong>Alerta:</strong> ${alertaTarea}</p>`;
+                if (bloqueanteTarea) bloque += `<p class="reporte-info">🔴 <strong>Bloqueante:</strong> ${bloqueanteTarea}</p>`;
+                if (notaTarea) {
+                    bloque += `<div class="nota-block ck-content-render reporte-info">
+                        <div class="small fw-bold" style="color:#856404;">📝 Notas de la tarea</div>
+                        ${notaTarea}
+                    </div>`;
                 }
+                bloque += `</div>`;
+                reporteHtml += bloque;
             });
         });
 
-        if (!cont.innerHTML.trim()) {
-            cont.innerHTML = '<p style="color:#6c757d;text-align:center;padding:20px;">Sin información para mostrar con el filtro actual.</p>';
-        }
-
+        // ── Alertas y bloqueantes de subtareas vinculadas a actividades ──
         const alertas = [], bloqueantes = [];
         targets.forEach(user => {
-            const uData = rawData.filter(d => d.owner === user);
-            uData.filter(d => d.tipo === 'Subtarea').forEach(st => {
+            const uData = rawData.filter(d => d.owner === user && d.estado !== 'Eliminada');
+            uData.filter(d => d.tipo === 'Subtarea' && d.estado !== 'Eliminada').forEach(st => {
                 const tieneAvances = uData.filter(av => av.parentId === st.id && av.estado !== 'Eliminada' && validateDate(av) && !av.interno).length > 0;
                 if (!tieneAvances) return;
                 if (st.alerta)     alertas.push({ subtarea: st.desc, texto: st.alerta });
@@ -1329,12 +1486,42 @@
             });
         });
 
-        let seccionAB = `<hr style="margin:16px 0;">`;
-        seccionAB += `<p><strong>⚠️ Alertas</strong></p>`;
-        seccionAB += alertas.length ? `<ul>${alertas.map(a => `<li><em>${a.subtarea}</em><ul><li>${a.texto}</li></ul></li>`).join('')}</ul>` : `<p>No se reportan alertas.</p>`;
-        seccionAB += `<p><strong>🔴 Bloqueantes</strong></p>`;
-        seccionAB += bloqueantes.length ? `<ul>${bloqueantes.map(b => `<li><em>${b.subtarea}</em><ul><li>${b.texto}</li></ul></li>`).join('')}</ul>` : `<p>No se reportan bloqueantes.</p>`;
-        cont.innerHTML += seccionAB;
+        if (reporteHtml) {
+            let seccionAB = `<hr style="margin:16px 0;">`;
+            seccionAB += `<p><strong>⚠️ Alertas</strong></p>`;
+            seccionAB += alertas.length ? `<ul>${alertas.map(a => `<li><em>${a.subtarea}</em><ul><li>${a.texto}</li></ul></li>`).join('')}</ul>` : `<p>No se reportan alertas.</p>`;
+            seccionAB += `<p><strong>🔴 Bloqueantes</strong></p>`;
+            seccionAB += bloqueantes.length ? `<ul>${bloqueantes.map(b => `<li><em>${b.subtarea}</em><ul><li>${b.texto}</li></ul></li>`).join('')}</ul>` : `<p>No se reportan bloqueantes.</p>`;
+            reporteHtml += seccionAB;
+        }
+
+        // ── Información general del proyecto (no asociada a tareas) ──
+        const gs = generalesData || [];
+        const gNotas = gs.filter(g => g.nota && g.nota.trim());
+        const gAlertas = gs.filter(g => g.alerta && g.alerta.trim());
+        const gBloqueantes = gs.filter(g => g.bloqueante && g.bloqueante.trim());
+
+        if (gs.length) {
+            let genHtml = `<hr style="margin:16px 0;">`;
+            genHtml += `<p><strong>📌 Información general del proyecto</strong></p>`;
+            genHtml += `<p><strong>⚠️ Alertas generales</strong></p>`;
+            genHtml += gAlertas.length
+                ? `<ul>${gAlertas.map(g => `<li>${nl2br(g.alerta)}</li>`).join('')}</ul>`
+                : `<p>No se reportan alertas generales.</p>`;
+            genHtml += `<p><strong>🔴 Bloqueantes generales</strong></p>`;
+            genHtml += gBloqueantes.length
+                ? `<ul>${gBloqueantes.map(g => `<li>${nl2br(g.bloqueante)}</li>`).join('')}</ul>`
+                : `<p>No se reportan bloqueantes generales.</p>`;
+            genHtml += `<p><strong>📝 Notas generales</strong></p>`;
+            genHtml += gNotas.length
+                ? `<ul>${gNotas.map(g => `<li>${nl2br(g.nota)}</li>`).join('')}</ul>`
+                : `<p>No se reportan notas generales.</p>`;
+            reporteHtml += genHtml;
+        }
+
+        cont.innerHTML = reporteHtml.trim()
+            ? reporteHtml
+            : '<p style="color:#6c757d;text-align:center;padding:20px;">Sin información para mostrar con el filtro actual.</p>';
 
         new bootstrap.Modal(document.getElementById('reporteModal')).show();
     }
