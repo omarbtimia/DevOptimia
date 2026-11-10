@@ -263,6 +263,52 @@ function saveNota(data) {
 }
 
 // ══════════════════════════════════════════════════
+//  ALERTAS, BLOQUEANTES Y NOTAS GENERALES (SIN TAREA/SUBTAREA)
+//  Se guarda una fila de Tipo = 'General' por usuario y proyecto
+// ══════════════════════════════════════════════════
+function saveGeneralProjectInfo(data) {
+  const ss = getDB();
+  let sheet = ss.getSheetByName(data.owner) || ss.insertSheet(data.owner);
+  ensureOpenEntriesSchema_(sheet);
+
+  const values = sheet.getDataRange().getValues();
+  const rowIndex = values.findIndex(r =>
+    String(r[1]) === 'General' && String(r[7]) === String(data.projectId)
+  );
+  const hoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const entryId = rowIndex !== -1 ? values[rowIndex][0] : Utilities.getUuid();
+  const esNuevo = rowIndex === -1;
+
+  const newRow = [
+    entryId,
+    'General',
+    '',
+    'Información General del Proyecto',
+    esNuevo ? hoy : (values[rowIndex][4] || hoy),
+    '',
+    'En proceso',
+    data.projectId || '',
+    data.alerta || '',
+    data.bloqueante || '',
+    '',
+    data.nota || '',
+    '', '', '', '', '', 'No', '', '', 'No'
+  ];
+
+  if (!esNuevo) sheet.getRange(rowIndex + 1, 1, 1, 21).setValues([newRow]);
+  else sheet.appendRow(newRow);
+
+  registrarAuditoria(
+    esNuevo ? 'CREAR' : 'EDITAR',
+    'InfoGeneral',
+    entryId,
+    `Proyecto: ${data.projectId} | Owner: ${data.owner}`
+  );
+
+  return { success: true };
+}
+
+// ══════════════════════════════════════════════════
 //  JUSTIFICACIÓN DE ATRASO — avances abiertos > 7 días
 //  Almacena en columna 19 (Observaciones) del avance, separadas por "homoplato"
 //  Formato de cada entrada: [FECHA]::TEXTO
@@ -293,9 +339,6 @@ function saveAtrasoAvance(data) {
 // ══════════════════════════════════════════════════
 const RESERVED_SHEETS_ = ['Usuarios', 'Proyectos', 'Categorias', 'Asignaciones', 'Auditoria'];
 
-// Busca en TODAS las hojas de owners (Tareas/Subtareas/Avances pueden
-// estar asignadas a usuarios distintos del padre) si existe algún hijo
-// directo (Parent_ID === parentId) cuyo Estado no sea 'Terminada' ni 'Eliminada'.
 function tieneHijosAbiertos_(ss, parentId) {
   const sheets = ss.getSheets();
   for (let s = 0; s < sheets.length; s++) {
@@ -326,8 +369,6 @@ function saveOrUpdateEntry(data) {
   const rowIndex = values.findIndex(r => r[0] === data.id);
   const esNuevo  = rowIndex === -1;
 
-  // 🔒 Validación de jerarquía (respaldo de servidor): no se puede cerrar
-  // una Tarea/Subtarea si aún tiene hijos (Subtareas/Avances) sin cerrar.
   if (!esNuevo && data.estado === 'Terminada' && (data.tipo === 'Tarea' || data.tipo === 'Subtarea')) {
     if (tieneHijosAbiertos_(ss, entryId)) {
       const tipoHijo = data.tipo === 'Tarea' ? 'subtareas' : 'avances/actividades';
