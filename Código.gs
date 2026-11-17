@@ -5,7 +5,8 @@ const OPEN_ENTRY_HEADERS = [
   'ID', 'Tipo', 'Parent_ID', 'Descripcion', 'Fecha Inicio', 'Fecha Fin',
   'Estado', 'ID_Proyecto', 'Alerta', 'Bloqueante', 'Categoria', 'Nota',
   'Jira', 'MSD', 'Especificacion Tecnica', 'Especificacion Funcional',
-  'Evidencia', 'Sin Entregable', 'Observaciones', 'Entregable', 'Interno'
+  'Evidencia', 'Sin Entregable', 'Observaciones', 'Entregable', 'Interno',
+  'Descripcion_Tarea'
 ];
 
 function ensureOpenEntriesSchema_(sheet) {
@@ -18,6 +19,17 @@ function ensureOpenEntriesSchema_(sheet) {
     const current = String(sheet.getRange(1, col).getValue() || '').trim();
     if (!current) sheet.getRange(1, col).setValue(OPEN_ENTRY_HEADERS[i]);
   }
+}
+
+// Normaliza estados antiguos hacia el nuevo modelo de 4 estados:
+// 'No iniciado', 'En proceso', 'Detenido', 'Completado' (más 'Eliminada')
+function normalizarEstado_(estadoRaw) {
+  const st = String(estadoRaw || '').trim();
+  if (st === 'Por Iniciar' || st === 'No iniciado') return 'No iniciado';
+  if (st === 'En Pausa' || st === 'Bloqueada' || st === 'Detenido') return 'Detenido';
+  if (st === 'Terminada' || st === 'Completado') return 'Completado';
+  if (st === 'Eliminada') return 'Eliminada';
+  return 'En proceso';
 }
 
 function getDB() {
@@ -263,6 +275,53 @@ function saveNota(data) {
 }
 
 // ══════════════════════════════════════════════════
+//  ALERTAS, BLOQUEANTES Y NOTAS GENERALES (SIN TAREA/SUBTAREA)
+//  Se guarda una fila de Tipo = 'General' por usuario y proyecto
+// ══════════════════════════════════════════════════
+function saveGeneralProjectInfo(data) {
+  const ss = getDB();
+  let sheet = ss.getSheetByName(data.owner) || ss.insertSheet(data.owner);
+  ensureOpenEntriesSchema_(sheet);
+
+  const values = sheet.getDataRange().getValues();
+  const rowIndex = values.findIndex(r =>
+    String(r[1]) === 'General' && String(r[7]) === String(data.projectId)
+  );
+  const hoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const entryId = rowIndex !== -1 ? values[rowIndex][0] : Utilities.getUuid();
+  const esNuevo = rowIndex === -1;
+
+  const newRow = [
+    entryId,
+    'General',
+    '',
+    'Información General del Proyecto',
+    esNuevo ? hoy : (values[rowIndex][4] || hoy),
+    '',
+    'En proceso',
+    data.projectId || '',
+    data.alerta || '',
+    data.bloqueante || '',
+    '',
+    data.nota || '',
+    '', '', '', '', '', 'No', '', '', 'No',
+    ''
+  ];
+
+  if (!esNuevo) sheet.getRange(rowIndex + 1, 1, 1, 22).setValues([newRow]);
+  else sheet.appendRow(newRow);
+
+  registrarAuditoria(
+    esNuevo ? 'CREAR' : 'EDITAR',
+    'InfoGeneral',
+    entryId,
+    `Proyecto: ${data.projectId} | Owner: ${data.owner}`
+  );
+
+  return { success: true };
+}
+
+// ══════════════════════════════════════════════════
 //  JUSTIFICACIÓN DE ATRASO — avances abiertos > 7 días
 //  Almacena en columna 19 (Observaciones) del avance, separadas por "homoplato"
 //  Formato de cada entrada: [FECHA]::TEXTO
@@ -293,9 +352,6 @@ function saveAtrasoAvance(data) {
 // ══════════════════════════════════════════════════
 const RESERVED_SHEETS_ = ['Usuarios', 'Proyectos', 'Categorias', 'Asignaciones', 'Auditoria'];
 
-// Busca en TODAS las hojas de owners (Tareas/Subtareas/Avances pueden
-// estar asignadas a usuarios distintos del padre) si existe algún hijo
-// directo (Parent_ID === parentId) cuyo Estado no sea 'Terminada' ni 'Eliminada'.
 function tieneHijosAbiertos_(ss, parentId) {
   const sheets = ss.getSheets();
   for (let s = 0; s < sheets.length; s++) {
@@ -308,8 +364,8 @@ function tieneHijosAbiertos_(ss, parentId) {
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       if (String(row[2]) === String(parentId)) {
-        const estado = String(row[6] || '').trim();
-        if (estado !== 'Terminada' && estado !== 'Eliminada') return true;
+        const estado = normalizarEstado_(row[6]);
+        if (estado !== 'Completado' && estado !== 'Eliminada') return true;
       }
     }
   }
@@ -326,12 +382,12 @@ function saveOrUpdateEntry(data) {
   const rowIndex = values.findIndex(r => r[0] === data.id);
   const esNuevo  = rowIndex === -1;
 
-  // 🔒 Validación de jerarquía (respaldo de servidor): no se puede cerrar
-  // una Tarea/Subtarea si aún tiene hijos (Subtareas/Avances) sin cerrar.
-  if (!esNuevo && data.estado === 'Terminada' && (data.tipo === 'Tarea' || data.tipo === 'Subtarea')) {
+  const estadoNormalizado = normalizarEstado_(data.estado);
+
+  if (!esNuevo && estadoNormalizado === 'Completado' && (data.tipo === 'Tarea' || data.tipo === 'Subtarea')) {
     if (tieneHijosAbiertos_(ss, entryId)) {
       const tipoHijo = data.tipo === 'Tarea' ? 'subtareas' : 'avances/actividades';
-      throw new Error(`No se puede marcar como "Terminada": existen ${tipoHijo} sin cerrar dentro de este elemento.`);
+      throw new Error(`No se puede marcar como "Completado": existen ${tipoHijo} sin completar dentro de este elemento.`);
     }
   }
 
@@ -340,6 +396,13 @@ function saveOrUpdateEntry(data) {
     ? (data.fechaInicio || hoy)
     : (data.fechaInicio || values[rowIndex][4] || hoy);
 
+  const notaActual = !esNuevo ? (values[rowIndex][11] || '') : '';
+  const descTareaActual = !esNuevo ? (values[rowIndex][21] || '') : '';
+
+  // Las subtareas y tareas ya no guardan alertas/bloqueantes; para Avances solo se conservan si está en 'Detenido'
+  const alertaGuardar = (data.tipo === 'Avance' && estadoNormalizado === 'Detenido') ? (data.alerta || '') : '';
+  const bloqGuardar   = (data.tipo === 'Avance' && estadoNormalizado === 'Detenido') ? (data.bloqueante || '') : '';
+
   const newRow = [
       entryId,
       data.tipo,
@@ -347,12 +410,12 @@ function saveOrUpdateEntry(data) {
       data.desc,
       fechaInicio,
       data.fechaFin   || '',
-      data.estado,
+      estadoNormalizado,
       data.projectId  || '',
-      data.alerta     || '',
-      data.bloqueante || '',
+      alertaGuardar,
+      bloqGuardar,
       data.categoria  || '',
-      data.nota       || '',
+      data.nota !== undefined ? data.nota : notaActual,
       data.jira       || '',
       data.msd        || '',
       data.espTecnica || '',
@@ -361,17 +424,18 @@ function saveOrUpdateEntry(data) {
       data.sinEntregable ? 'Sí' : 'No',
       data.observaciones || '',
       data.entregable   || '',
-      data.interno ? 'Sí' : 'No'
+      data.interno ? 'Sí' : 'No',
+      data.tipo === 'Tarea' ? (data.descripcionTarea !== undefined ? data.descripcionTarea : descTareaActual) : ''
     ];
 
-  if (!esNuevo) sheet.getRange(rowIndex + 1, 1, 1, 21).setValues([newRow]);
+  if (!esNuevo) sheet.getRange(rowIndex + 1, 1, 1, 22).setValues([newRow]);
   else sheet.appendRow(newRow);
 
   registrarAuditoria(
     esNuevo ? 'CREAR' : 'EDITAR',
     data.tipo,
     entryId,
-    `Proyecto: ${data.projectId} | Estado: ${data.estado} | Cat: ${data.categoria || '-'}`
+    `Proyecto: ${data.projectId} | Estado: ${estadoNormalizado} | Cat: ${data.categoria || '-'}`
   );
 
   return { success: true };
@@ -405,35 +469,89 @@ function fetchEntries(targetUser, projectId) {
   data.shift();
   return data
     .filter(r => !projectId || String(r[7]) === String(projectId))
-    .map(r => ({
-      id:          r[0],
-      tipo:        r[1],
-      parentId:    r[2],
-      desc:        r[3],
-      fechaInicio: r[4] instanceof Date ? Utilities.formatDate(r[4], Session.getScriptTimeZone(), 'yyyy-MM-dd') : r[4],
-      fechaFin:    r[5] instanceof Date ? Utilities.formatDate(r[5], Session.getScriptTimeZone(), 'yyyy-MM-dd') : r[5],
-      estado:      r[6],
-      owner:       targetUser,
-      projectId:   r[7],
-      alerta:      r[8]  || '',
-      bloqueante:  r[9]  || '',
-      categoria:   r[10] || '',
-      nota:        r[11] || '',
-      jira:        r[12] || '',
-      msd:         r[13] || '',
-      espTecnica:  r[14] || '',
-      espFuncional:r[15] || '',
-      evidencia:   r[16] || '',
-      sinEntregable: (r[17] || '') === 'Sí',
-      observaciones: r[18] || '',
-      entregable:  r[19] || '',
-      interno:     (r[20] || '') === 'Sí'
-    }));
+    .map(r => {
+      const tipo = r[1];
+      const estadoRaw = String(r[6] || '').trim();
+      const estadoNorm = normalizarEstado_(estadoRaw);
+      let alerta = r[8] || '';
+      let bloqueante = r[9] || '';
+
+      // Si un avance venía con el estado antiguo 'Bloqueada' o 'En Pausa' sin texto en la columna, asegurar consistencia
+      if (tipo === 'Subtarea' || tipo === 'Tarea') {
+        alerta = '';
+        bloqueante = '';
+      } else if (tipo === 'Avance' && estadoNorm !== 'Detenido') {
+        alerta = '';
+        bloqueante = '';
+      }
+
+      return {
+        id:               r[0],
+        tipo:             tipo,
+        parentId:         r[2],
+        desc:             r[3],
+        fechaInicio:      r[4] instanceof Date ? Utilities.formatDate(r[4], Session.getScriptTimeZone(), 'yyyy-MM-dd') : r[4],
+        fechaFin:         r[5] instanceof Date ? Utilities.formatDate(r[5], Session.getScriptTimeZone(), 'yyyy-MM-dd') : r[5],
+        estado:           estadoNorm,
+        owner:            targetUser,
+        projectId:        r[7],
+        alerta:           alerta,
+        bloqueante:       bloqueante,
+        categoria:        r[10] || '',
+        nota:             r[11] || '',
+        jira:             r[12] || '',
+        msd:              r[13] || '',
+        espTecnica:       r[14] || '',
+        espFuncional:     r[15] || '',
+        evidencia:        r[16] || '',
+        sinEntregable:    (r[17] || '') === 'Sí',
+        observaciones:    r[18] || '',
+        entregable:       r[19] || '',
+        interno:          (r[20] || '') === 'Sí',
+        descripcionTarea: r[21] || ''
+      };
+    });
+}
+
+// Obtiene únicamente los usuarios asignados actualmente al proyecto en la hoja 'Asignaciones' (más su líder)
+function obtenerUsuariosAsignadosProyecto_(ss, projectId) {
+  if (!projectId) return null;
+  const permitidos = {};
+
+  const asigSheet = ss.getSheetByName('Asignaciones');
+  if (asigSheet && asigSheet.getLastRow() > 1) {
+    const rows = asigSheet.getDataRange().getValues().slice(1);
+    rows.forEach(r => {
+      if (String(r[0]) === String(projectId) && r[1]) {
+        permitidos[String(r[1]).trim().toLowerCase()] = true;
+      }
+    });
+  }
+
+  const projSheet = ss.getSheetByName('Proyectos');
+  if (projSheet && projSheet.getLastRow() > 1) {
+    const pRows = projSheet.getDataRange().getValues().slice(1);
+    const proj = pRows.find(r => String(r[0]) === String(projectId));
+    if (proj && proj[2]) {
+      permitidos[String(proj[2]).trim().toLowerCase()] = true;
+    }
+  }
+
+  return permitidos;
 }
 
 function fetchAllEntries(userList, projectId) {
+  const ss = getDB();
+  const permitidosMap = obtenerUsuariosAsignadosProyecto_(ss, projectId);
   let all = [];
-  userList.forEach(user => { all = all.concat(fetchEntries(user, projectId)); });
+
+  (userList || []).forEach(user => {
+    const emailNorm = String(user || '').trim().toLowerCase();
+    if (!emailNorm) return;
+    if (permitidosMap && !permitidosMap[emailNorm]) return;
+    all = all.concat(fetchEntries(emailNorm, projectId));
+  });
+
   return all;
 }
 
