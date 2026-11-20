@@ -314,7 +314,6 @@
             margin-top: 2px;
             transition: all 0.2s ease;
         }
-        /* Prioridad de color en el ícono de la tarea: Rojo (Bloqueante) > Amarillo (Alerta) */
         .task-icon-box.icon-priority-red {
             background: #FFF1F0;
             color: var(--col-bloqueante);
@@ -500,7 +499,6 @@
 
         /* ══════════════════════════════════════════════════
            ESTILOS TABLERO KANBAN JERÁRQUICO (4 COLUMNAS)
-           (Recuadro Tarea -> Registro Subtarea -> Post-it Avance)
            ══════════════════════════════════════════════════ */
         .kanban-summary-bar {
             background: var(--optimia-card);
@@ -561,7 +559,6 @@
             flex-grow: 1;
         }
 
-        /* Nivel 1 en Kanban: Recuadro Contenedor de la Tarea */
         .kanban-task-group {
             background: #F8FAFC;
             border: 1px solid #CBD5E1;
@@ -590,7 +587,6 @@
             flex-shrink: 0;
         }
 
-        /* Nivel 2 en Kanban: Registro Contenedor de la Subtarea */
         .kanban-subtask-group {
             background: #EFF3F8;
             border: 1px solid #DCE3EC;
@@ -626,7 +622,6 @@
             gap: 7px;
         }
 
-        /* Nivel 3 en Kanban: Post-it (Solo contiene el Avance) */
         .postit-card {
             background: #FFFFFF;
             border-radius: 8px;
@@ -767,6 +762,160 @@
         .badge-atraso.bloqueado { background: #FFF1F0; color: #CF1322; border-color: var(--col-bloqueante); cursor: not-allowed; }
         .hist-atraso-item { background: #FFFBE6; border-left: 3px solid var(--col-alerta); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 0.8rem; }
         .hist-atraso-fecha { font-size: 0.7rem; font-weight: 700; color: #8C8C8C; margin-bottom: 2px; }
+
+        /* ══════════════════════════════════════════════════
+           CHAT FLOTANTE EXCLUSIVO PARA LÍDERES (MORGAN - AWS BEDROCK HAIKU)
+           ══════════════════════════════════════════════════ */
+        #leaderChatFab {
+            position: fixed;
+            bottom: 22px;
+            right: 22px;
+            z-index: 1040;
+            background: var(--optimia-black);
+            color: #FFFFFF;
+            border: 1px solid #3F3F46;
+            border-radius: 999px;
+            padding: 10px 18px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+            display: none;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        #leaderChatFab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.28);
+        }
+        #leaderChatFab .chat-fab-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #52C41A;
+            box-shadow: 0 0 6px #52C41A;
+        }
+        .paw-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+            line-height: 1;
+        }
+
+        #leaderChatWidget {
+            position: fixed;
+            bottom: 76px;
+            right: 22px;
+            width: 420px;
+            max-width: calc(100vw - 32px);
+            height: 540px;
+            max-height: calc(100vh - 110px);
+            background: #FFFFFF;
+            border: 1px solid var(--optimia-border);
+            border-radius: 14px;
+            box-shadow: 0 16px 36px rgba(0,0,0,0.18);
+            z-index: 1045;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .leader-chat-header {
+            background: var(--optimia-black);
+            color: #FFFFFF;
+            padding: 12px 15px;
+            border-bottom: 2px solid var(--col-en-proceso);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .leader-chat-project-pill {
+            font-size: 0.68rem;
+            background: rgba(255,255,255,0.12);
+            color: #E4E4E7;
+            padding: 2px 8px;
+            border-radius: 999px;
+            display: inline-block;
+            margin-top: 2px;
+        }
+        .leader-chat-messages {
+            flex: 1;
+            padding: 12px 14px;
+            overflow-y: auto;
+            background: #F8FAFC;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .chat-msg-bubble {
+            max-width: 92%;
+            padding: 9px 12px;
+            border-radius: 10px;
+            font-size: 0.79rem;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+        .chat-msg-user {
+            align-self: flex-end;
+            background: #18181B;
+            color: #FFFFFF;
+            border-bottom-right-radius: 2px;
+            white-space: pre-wrap;
+        }
+        .chat-msg-bot {
+            align-self: flex-start;
+            background: #FFFFFF;
+            color: #1E293B;
+            border: 1px solid #E2E8F0;
+            border-bottom-left-radius: 2px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+        .chat-msg-bot ul, .chat-msg-bot ol {
+            margin: 4px 0 6px 0;
+            padding-left: 1.15rem;
+        }
+        .chat-msg-bot li {
+            margin-bottom: 3px;
+        }
+        .chat-msg-bot p {
+            margin: 0 0 6px 0;
+        }
+        .chat-msg-bot p:last-child {
+            margin-bottom: 0;
+        }
+        .chat-quick-chips {
+            padding: 7px 10px;
+            background: #F1F5F9;
+            border-top: 1px solid #E2E8F0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .chat-chip-btn {
+            border: 1px solid #CBD5E1;
+            background: #FFFFFF;
+            color: #334155;
+            font-size: 0.67rem;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all 0.12s ease;
+        }
+        .chat-chip-btn:hover {
+            background: #EFF6FF;
+            color: #1D4ED8;
+            border-color: #93C5FD;
+        }
+        .leader-chat-footer {
+            padding: 10px;
+            background: #FFFFFF;
+            border-top: 1px solid var(--optimia-border);
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
     </style>
 </head>
 <body spellcheck="true">
@@ -787,7 +936,7 @@
         <div class="control-panel">
             <div class="ctrl-group" title="Proyecto activo">
                 <i class="bi bi-folder2-open"></i>
-                <select id="projSelect" class="form-select form-select-sm" style="min-width: 145px;" onchange="actualizarColaboradoresSelect(); loadData();"></select>
+                <select id="projSelect" class="form-select form-select-sm" style="min-width: 145px;" onchange="actualizarColaboradoresSelect(); actualizarHeaderChatProyecto(); loadData();"></select>
             </div>
             <div class="ctrl-group" title="Colaborador / Vista">
                 <i class="bi bi-person-badge"></i>
@@ -928,6 +1077,43 @@
 
     <!-- CONTENEDOR PRINCIPAL -->
     <div id="mainUI"></div>
+</div>
+
+<!-- BOTÓN FLOTANTE Y WIDGET DE CHAT EXCLUSIVO PARA LÍDERES (MORGAN - AWS BEDROCK CLAUDE HAIKU) -->
+<button id="leaderChatFab" type="button" onclick="toggleLeaderChat()">
+    <span class="chat-fab-dot"></span>
+    <span class="paw-icon" aria-hidden="true">🐾</span>
+    <span>Morgan</span>
+</button>
+
+<div id="leaderChatWidget">
+    <div class="leader-chat-header">
+        <div>
+            <div class="fw-bold" style="font-size:0.86rem;"><span class="me-1">🐾</span>Morgan</div>
+            <span class="leader-chat-project-pill" id="leaderChatProjLabel">Proyecto actual</span>
+        </div>
+        <div class="d-flex align-items-center gap-1">
+            <button type="button" class="btn btn-sm text-white-50 p-1" title="Limpiar conversación" onclick="limpiarChatLider()">
+                <i class="bi bi-trash3"></i>
+            </button>
+            <button type="button" class="btn-close btn-close-white" style="font-size:0.7rem;" onclick="toggleLeaderChat()"></button>
+        </div>
+    </div>
+    <div class="leader-chat-messages" id="leaderChatMessages">
+        <div class="chat-msg-bubble chat-msg-bot">Hola, soy <strong>Morgan 🐾</strong>. Consulto todo lo registrado en el proyecto activo (sin importar el filtro de fechas). Puedes usar los accesos rápidos o buscar cualquier palabra clave para saber quién realizó una actividad y su estado.</div>
+    </div>
+    <div class="chat-quick-chips">
+        <button type="button" class="chat-chip-btn" onclick="enviarPreguntaRapidaChat('Muestra Lo Activo: lista en HTML jerárquico el nombre de cada Tarea, Subtarea y sus Actividades abiertas (En proceso, No iniciado o Detenido) agrupadas por el proyecto.')">⚡ Lo Activo</button>
+        <button type="button" class="chat-chip-btn" onclick="enviarPreguntaRapidaChat('Muestra los Tiquets abiertos: lista en HTML todo lo que tenga ticket Jira, MSD o mencione ticket o WO y que esté abierto (no Completado), indicando nombre de Tarea, Subtarea, ticket/WO, estado y quién lo tiene.')">🎫 Tiquets abiertos</button>
+        <button type="button" class="chat-chip-btn" onclick="enviarPreguntaRapidaChat('Muestra en lista HTML las actividades con alertas o bloqueantes, indicando nombre de la Tarea, Subtarea, Actividad, responsable y su Alerta o Bloqueante.')">🛑 Alertas / Bloqueantes</button>
+        <button type="button" class="chat-chip-btn" onclick="enviarPreguntaRapidaChat('Muestra los Rezagos: lista en HTML los avances abiertos con 7 o más días de rezago (REZAGO ACTIVO: Sí), indicando nombre de Tarea, Subtarea, Actividad, responsable y días de rezago.')">⏰ Rezagos (+7d)</button>
+    </div>
+    <div class="leader-chat-footer">
+        <input type="text" id="leaderChatInput" class="form-control form-control-sm" placeholder="Busca una palabra, ticket o pregunta a Morgan..." onkeydown="if(event.key==='Enter') enviarPreguntaChatLider()">
+        <button type="button" class="btn btn-sm btn-save-modal fw-bold px-3" id="leaderChatSendBtn" onclick="enviarPreguntaChatLider()">
+            <i class="bi bi-send-fill"></i>
+        </button>
+    </div>
 </div>
 
 <!-- MODAL: CREAR / EDITAR TAREA, SUBTAREA O ACTIVIDAD -->
@@ -1203,7 +1389,6 @@
         link: { defaultProtocol: 'https://', addTargetToExternalLinks: true }
     };
 
-    // Mapa de Colorimetría para los 4 estados: No iniciado, En proceso, Detenido (Alerta o Bloqueante), Completado
     const ESTADO_COLORIMETRIA = {
         'No iniciado':         { hex: '#8C8C8C', bgSoft: '#fafafa', textDark: '#595959', icon: '⚪', label: 'No iniciado',         cssClass: 'st-pending' },
         'En proceso':          { hex: '#1890FF', bgSoft: '#e6f7ff', textDark: '#0050b3', icon: '🔵', label: 'En proceso',          cssClass: 'st-process' },
@@ -1448,6 +1633,13 @@
                 actualizarColaboradoresSelect();
                 document.getElementById('btnNewTask').style.display = 'inline-flex';
                 document.getElementById('btnGeneralInfo').style.display = 'inline-flex';
+
+                // Mostrar botón flotante de Morgan únicamente si el usuario tiene rol 'Líder'
+                if (userRole === 'Líder') {
+                    document.getElementById('leaderChatFab').style.display = 'inline-flex';
+                    actualizarHeaderChatProyecto();
+                }
+
                 loadData();
             } else {
                 document.getElementById('mainUI').innerHTML = "<div class='alert alert-warning m-3'>No tienes proyectos asignados.</div>";
@@ -1455,6 +1647,110 @@
             }
         }).getAppData();
     };
+
+    // ══════════════════════════════════════════════════
+    //  FUNCIONES DE MORGAN (CHAT EXCLUSIVO PARA LÍDERES CON SALIDA HTML SEGURA)
+    // ══════════════════════════════════════════════════
+    function obtenerNombreProyectoActual() {
+        const selP = document.getElementById('projSelect');
+        return (selP && selP.options[selP.selectedIndex]) ? selP.options[selP.selectedIndex].text : 'Proyecto actual';
+    }
+
+    function actualizarHeaderChatProyecto() {
+        const lbl = document.getElementById('leaderChatProjLabel');
+        if (lbl) lbl.textContent = '📁 ' + obtenerNombreProyectoActual();
+    }
+
+    function toggleLeaderChat() {
+        if (userRole !== 'Líder') return;
+        const widget = document.getElementById('leaderChatWidget');
+        const isVisible = widget.style.display === 'flex';
+        widget.style.display = isVisible ? 'none' : 'flex';
+        if (!isVisible) {
+            actualizarHeaderChatProyecto();
+            setTimeout(() => document.getElementById('leaderChatInput').focus(), 80);
+        }
+    }
+
+    function sanitizarHtmlMorgan(rawHtml) {
+        if (!rawHtml) return '';
+        let s = String(rawHtml)
+            .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+            .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        if (!/<(ul|ol|li|p|strong|b|em|br|div|span)\b/i.test(s)) {
+            s = s.replace(/\n/g, '<br>');
+        }
+        return s;
+    }
+
+    function limpiarChatLider() {
+        const box = document.getElementById('leaderChatMessages');
+        box.innerHTML = '';
+        agregarBurbujaChat('bot', `Conversación con <strong>Morgan 🐾</strong> reiniciada para el proyecto <strong>${obtenerNombreProyectoActual()}</strong>. ¿Qué deseas buscar o consultar?`, true);
+    }
+
+    function agregarBurbujaChat(rol, contenido, esHtml = false) {
+        const box = document.getElementById('leaderChatMessages');
+        const div = document.createElement('div');
+        div.className = 'chat-msg-bubble ' + (rol === 'user' ? 'chat-msg-user' : 'chat-msg-bot');
+        if (rol === 'bot' && esHtml) {
+            div.innerHTML = sanitizarHtmlMorgan(contenido);
+        } else {
+            div.textContent = contenido;
+        }
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+        return div;
+    }
+
+    function enviarPreguntaRapidaChat(pregunta) {
+        const input = document.getElementById('leaderChatInput');
+        input.value = pregunta;
+        enviarPreguntaChatLider();
+    }
+
+    function enviarPreguntaChatLider() {
+        if (userRole !== 'Líder') return;
+        const input = document.getElementById('leaderChatInput');
+        const btn   = document.getElementById('leaderChatSendBtn');
+        const pregunta = input.value.trim();
+        if (!pregunta) return;
+
+        const projId   = document.getElementById('projSelect').value;
+        const projName = obtenerNombreProyectoActual();
+
+        agregarBurbujaChat('user', pregunta, false);
+        input.value = '';
+        input.disabled = true;
+        btn.disabled = true;
+
+        const loadingBubble = agregarBurbujaChat('bot', '🐾 Morgan está corriendo...', false);
+
+        google.script.run
+            .withSuccessHandler(res => {
+                input.disabled = false;
+                btn.disabled = false;
+                input.focus();
+                if (res && res.success) {
+                    loadingBubble.innerHTML = sanitizarHtmlMorgan(res.answer);
+                } else {
+                    loadingBubble.textContent = (res && res.error) ? res.error : 'No fue posible obtener respuesta.';
+                }
+                const box = document.getElementById('leaderChatMessages');
+                box.scrollTop = box.scrollHeight;
+            })
+            .withFailureHandler(err => {
+                input.disabled = false;
+                btn.disabled = false;
+                loadingBubble.textContent = 'Error al consultar a Morgan: ' + err.message;
+            })
+            .consultarChatLiderBedrock({
+                projectId:   projId,
+                projectName: projName,
+                question:    pregunta
+            });
+    }
 
     function actualizarColaboradoresSelect() {
         const selU  = document.getElementById('userSelect');
@@ -1797,7 +2093,6 @@
                             const userShort = (it.av.owner || '').split('@')[0];
                             const iniciales = obtenerInicialesEmail(it.av.owner);
 
-                            // REGLA: En Kanban lo Completado NO se puede mover entre estados ya que está finalizado (sin mostrar candado)
                             const puedeMover = tienePermisoEdicion && it.av.estado !== 'Completado';
 
                             const postitColorClass = col.key === 'Detenido'
@@ -1846,7 +2141,6 @@
 
     function onPostitDragStart(e, avanceId, cardEl) {
         const av = rawData.find(x => x.id === avanceId);
-        // Bloquear arrastre si no tiene permisos o si la actividad ya está en estado 'Completado'
         if (!av || av.estado === 'Completado' || (av.owner !== currentUserEmail && userRole !== 'Líder')) {
             e.preventDefault();
             return;
@@ -2248,7 +2542,6 @@
         const rTaskCond = (currentTab === 'reporte' && document.getElementById('rTaskCondFilter')) ? document.getElementById('rTaskCondFilter').value : '';
         const rAvEst    = (currentTab === 'reporte' && document.getElementById('rAvEstFilter')) ? document.getElementById('rAvEstFilter').value : '';
 
-        // Cuando se selecciona 'Tareas con Bloqueantes o Alertas', se omite el filtro de fecha para poder ver todo el historial de la subtarea
         const omitirFiltroFechaPorBloqAlerta = (currentTab === 'reporte' && rTaskCond === 'con_bloqueantes_alertas');
 
         targets.forEach(user => {
@@ -2307,9 +2600,6 @@
                         uData.filter(av => av.parentId === st.id && av.estado !== 'Eliminada').forEach(av => allTaskAvances.push(av));
                     });
 
-                    // Evaluar prioridad de color del ícono de la Tarea según todos los avances de sus subtareas:
-                    // Prioridad 1: Rojo si algún avance está Detenido con Bloqueante
-                    // Prioridad 2: Amarillo si algún avance está Detenido con Alerta
                     const avancesEvaluablesTarea = currentTab === 'gestion'
                         ? allTaskAvances.filter(av => av.estado !== 'Completado')
                         : allTaskAvances.filter(av => omitirFiltroFechaPorBloqAlerta ? true : validateDate(av));
@@ -2325,7 +2615,6 @@
                             const tieneCompletados = allTaskAvances.some(av => av.estado === 'Completado' && validateDate(av));
                             if (!tieneCompletados) return;
                         } else if (rTaskCond === 'con_bloqueantes_alertas') {
-                            // Omitiendo el filtro de fecha: verifica si algún avance de la tarea está detenido con bloqueante o alerta
                             const tieneBloqOAlerta = allTaskAvances.some(av =>
                                 av.estado === 'Detenido' && (tieneContenidoHtml(av.bloqueante) || tieneContenidoHtml(av.alerta))
                             );
@@ -2349,8 +2638,6 @@
 
                         const allAvsForSt = uData.filter(av => av.parentId === st.id && av.estado !== 'Eliminada');
 
-                        // Si el filtro es 'Tareas con Bloqueantes o Alertas', identificar la subtarea que tiene algún avance detenido (con bloqueante o alerta)
-                        // y mostrar todos los avances realizados en esa subtarea (omitiendo el filtro de fechas)
                         if (currentTab === 'reporte' && rTaskCond === 'con_bloqueantes_alertas') {
                             const subtareaTieneBloqOAlerta = allAvsForSt.some(avItem =>
                                 avItem.estado === 'Detenido' && (tieneContenidoHtml(avItem.bloqueante) || tieneContenidoHtml(avItem.alerta))
@@ -2363,7 +2650,6 @@
                         if (currentTab === 'gestion') {
                             avs = avs.filter(av => av.estado !== 'Completado' && av.estado !== 'Eliminada');
                         } else {
-                            // En 'con_bloqueantes_alertas' se omite validateDate(av) para ver todo lo realizado en la subtarea
                             avs = avs.filter(av => av.estado !== 'Eliminada' && (omitirFiltroFechaPorBloqAlerta ? true : validateDate(av)));
 
                             if (!rAvEst && rTaskCond === 'con_avances_activos') {
@@ -3079,8 +3365,6 @@
         return html ? `<ul>${html}</ul>` : '';
     }
 
-    // Genera el reporte para correo excluyendo 'No iniciado' y listando las actividades Detenidas
-    // en la sección de Alertas o Bloqueantes según la categoría seleccionada.
     function abrirModalReporte() {
         const selUser = document.getElementById('userSelect').value;
         const targets = (selUser === 'TODOS') ? obtenerColaboradoresProyectoActual() : [selUser];

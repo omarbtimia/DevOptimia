@@ -1,6 +1,13 @@
 //  CONFIGURACIÓN — ID del Google Sheet de datos
 var SHEET_ID = '1EeZQn_f2vf9Il57z8qA_xMYafto4habUjnZjrP6F_XE';
 
+//  CONFIGURACIÓN AWS BEDROCK (Chat exclusivo para Líderes)
+//  Puedes pegar tu token aquí o configurarlo en Propiedades del Script como 'AWS_BEARER_TOKEN_BEDROCK'
+const AWS_BEARER_TOKEN_BEDROCK = '';
+const BEDROCK_REGION = 'us-east-1';
+const BEDROCK_MODEL = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
+const BEDROCK_FALLBACK_MODEL = 'us.anthropic.claude-3-5-haiku-20241022-v1:0';
+
 const OPEN_ENTRY_HEADERS = [
   'ID', 'Tipo', 'Parent_ID', 'Descripcion', 'Fecha Inicio', 'Fecha Fin',
   'Estado', 'ID_Proyecto', 'Alerta', 'Bloqueante', 'Categoria', 'Nota',
@@ -8,6 +15,37 @@ const OPEN_ENTRY_HEADERS = [
   'Evidencia', 'Sin Entregable', 'Observaciones', 'Entregable', 'Interno',
   'Descripcion_Tarea'
 ];
+
+// Obtiene el correo del usuario de forma segura tanto en USER_ACCESSING como en USER_DEPLOYING
+function obtenerEmailUsuarioActivo_() {
+  const active = Session.getActiveUser().getEmail();
+  if (active && String(active).trim() !== '') {
+    return String(active).trim().toLowerCase();
+  }
+  const effective = Session.getEffectiveUser().getEmail();
+  return String(effective || '').trim().toLowerCase();
+}
+
+// ══════════════════════════════════════════════════
+//  FUNCIÓN PARA AUTORIZAR Y PROBAR BEDROCK DESDE EL EDITOR
+// ══════════════════════════════════════════════════
+function autorizarPermisosBedrock() {
+  const apiKey = (AWS_BEARER_TOKEN_BEDROCK && AWS_BEARER_TOKEN_BEDROCK.trim()) ||
+                 PropertiesService.getScriptProperties().getProperty('AWS_BEARER_TOKEN_BEDROCK') || '';
+  const url = `https://bedrock-runtime.${BEDROCK_REGION}.amazonaws.com/model/${encodeURIComponent(BEDROCK_MODEL)}/converse`;
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer ' + apiKey },
+    payload: JSON.stringify({
+      messages: [{ role: 'user', content: [{ text: 'Responde solo: OK' }] }],
+      inferenceConfig: { maxTokens: 10 }
+    }),
+    muteHttpExceptions: true
+  });
+  Logger.log('HTTP Status: ' + res.getResponseCode());
+  Logger.log('Respuesta de Bedrock recibida: ' + res.getContentText());
+}
 
 function ensureOpenEntriesSchema_(sheet) {
   if (sheet.getLastRow() === 0) {
@@ -134,7 +172,7 @@ function cfgSaveCategoria(data) {
     sheet = ss.insertSheet('Categorias');
     sheet.appendRow(['ID','NOMBRE','CREADO_POR','FECHA']);
   }
-  const email = Session.getActiveUser().getEmail().toLowerCase();
+  const email = obtenerEmailUsuarioActivo_();
   const fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const values = sheet.getDataRange().getValues();
   const idx = values.findIndex(r => r[0] === data.id);
@@ -184,7 +222,7 @@ function registrarAuditoria(accion, tipo, idRegistro, detalle) {
     sheet.appendRow(['Timestamp', 'Usuario', 'Accion', 'Tipo', 'ID_Registro', 'Detalle']);
     sheet.getRange(1, 1, 1, 6).setFontWeight('bold');
   }
-  const email = Session.getActiveUser().getEmail().toLowerCase();
+  const email = obtenerEmailUsuarioActivo_();
   const ts = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
   sheet.appendRow([ts, email, accion, tipo || '', idRegistro || '', detalle || '']);
 }
@@ -210,7 +248,7 @@ function addCategoria(nombre) {
     sheet = ss.insertSheet('Categorias');
     sheet.appendRow(['ID', 'NOMBRE', 'CREADO_POR', 'FECHA']);
   }
-  const email = Session.getActiveUser().getEmail().toLowerCase();
+  const email = obtenerEmailUsuarioActivo_();
   const newId = Utilities.getUuid();
   const fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   sheet.appendRow([newId, nombre.trim(), email, fecha]);
@@ -219,12 +257,12 @@ function addCategoria(nombre) {
 }
 
 function getAppData() {
-  const email = Session.getActiveUser().getEmail().toLowerCase();
+  const email = obtenerEmailUsuarioActivo_();
   const ss = getDB();
 
   let configSheet = ss.getSheetByName('Usuarios') || ss.insertSheet('Usuarios');
   const usersData = configSheet.getDataRange().getValues();
-  const userRow = usersData.find(r => r[0].toLowerCase() === email);
+  const userRow = usersData.find(r => String(r[0] || '').toLowerCase() === email);
 
   if (!userRow) return { access: false, email: email };
   const role = userRow[1];
@@ -251,13 +289,13 @@ function getAppData() {
   }
 
   return {
-    access:      true,
-    email:       email,
-    role:        role,
-    userList:    usersData.map(r => r[0]).filter(e => e !== '' && e !== 'CORREO'),
-    projects:    myProjects,
+    access:       true,
+    email:        email,
+    role:         role,
+    userList:     usersData.map(r => r[0]).filter(e => e !== '' && e !== 'CORREO'),
+    projects:     myProjects,
     asignaciones: asignations.filter(r => r[0] && r[1]).map(r => ({ proyectoId: String(r[0]), email: r[1].toLowerCase() })),
-    categorias:  getCategorias()
+    categorias:   getCategorias()
   };
 }
 
@@ -399,7 +437,6 @@ function saveOrUpdateEntry(data) {
   const notaActual = !esNuevo ? (values[rowIndex][11] || '') : '';
   const descTareaActual = !esNuevo ? (values[rowIndex][21] || '') : '';
 
-  // Las subtareas y tareas ya no guardan alertas/bloqueantes; para Avances solo se conservan si está en 'Detenido'
   const alertaGuardar = (data.tipo === 'Avance' && estadoNormalizado === 'Detenido') ? (data.alerta || '') : '';
   const bloqGuardar   = (data.tipo === 'Avance' && estadoNormalizado === 'Detenido') ? (data.bloqueante || '') : '';
 
@@ -476,7 +513,6 @@ function fetchEntries(targetUser, projectId) {
       let alerta = r[8] || '';
       let bloqueante = r[9] || '';
 
-      // Si un avance venía con el estado antiguo 'Bloqueada' o 'En Pausa' sin texto en la columna, asegurar consistencia
       if (tipo === 'Subtarea' || tipo === 'Tarea') {
         alerta = '';
         bloqueante = '';
@@ -555,14 +591,285 @@ function fetchAllEntries(userList, projectId) {
   return all;
 }
 
+// ══════════════════════════════════════════════════
+//  MORGAN: CHAT BUSCADOR EXCLUSIVO PARA LÍDERES (AWS BEDROCK)
+//  Consulta TODO lo registrado en el proyecto seleccionado sin filtro de fecha
+// ══════════════════════════════════════════════════
+function limpiarHtmlATexto_(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function formatearObservacionesContexto_(obs) {
+  if (!obs) return '';
+  return String(obs)
+    .split('homoplato')
+    .map(p => p.trim())
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function calcularInfoAtrasoBackend_(av) {
+  if (!av || av.estado === 'Completado' || av.estado === 'Eliminada' || !av.fechaInicio) {
+    return { enAtraso: false, diasAtraso: 0, ultimaRef: '' };
+  }
+  const hoyStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const partes = String(av.observaciones || '').split('homoplato').map(e => e.trim()).filter(Boolean);
+  let ultimaFechaRef = String(av.fechaInicio).trim();
+
+  partes.forEach(p => {
+    const m = p.match(/^\[(\d{4}-\d{2}-\d{2})\]::([\s\S]*)$/);
+    if (m && m[1]) ultimaFechaRef = m[1];
+  });
+
+  const d1 = new Date(ultimaFechaRef + 'T00:00:00');
+  const d2 = new Date(hoyStr + 'T00:00:00');
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+    return { enAtraso: false, diasAtraso: 0, ultimaRef: ultimaFechaRef };
+  }
+
+  const dias = Math.floor((d2.getTime() - d1.getTime()) / 86400000);
+  return {
+    enAtraso: dias >= 7,
+    diasAtraso: dias,
+    ultimaRef: ultimaFechaRef
+  };
+}
+
+function construirContextoProyectoChat_(ss, projectId, projectName) {
+  const permitidosMap = obtenerUsuariosAsignadosProyecto_(ss, projectId) || {};
+  const colaboradores = Object.keys(permitidosMap).sort();
+
+  // Trae TODO el historial registrado por cada colaborador asignado al proyecto (sin filtro de fecha)
+  let entries = [];
+  colaboradores.forEach(email => {
+    entries = entries.concat(fetchEntries(email, projectId));
+  });
+
+  entries = entries.filter(e => e.estado !== 'Eliminada');
+
+  const hoyStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const lineas = [];
+  lineas.push(`PROYECTO SELECCIONADO: ${projectName || projectId}`);
+  lineas.push(`FECHA ACTUAL: ${hoyStr}`);
+  lineas.push(`COLABORADORES ASIGNADOS: ${colaboradores.length ? colaboradores.join(', ') : 'Ninguno'}`);
+  lineas.push('');
+
+  // 1. Información General del Proyecto
+  const generales = entries.filter(e => e.tipo === 'General');
+  if (generales.length > 0) {
+    lineas.push('=== INFORMACIÓN GENERAL DEL PROYECTO ===');
+    generales.forEach(g => {
+      const al = limpiarHtmlATexto_(g.alerta);
+      const bl = limpiarHtmlATexto_(g.bloqueante);
+      const nt = limpiarHtmlATexto_(g.nota);
+      if (al) lineas.push(`- Alerta General (Colaborador: ${g.owner}): ${al}`);
+      if (bl) lineas.push(`- Bloqueante General (Colaborador: ${g.owner}): ${bl}`);
+      if (nt) lineas.push(`- Nota General (Colaborador: ${g.owner}): ${nt}`);
+    });
+    lineas.push('');
+  }
+
+  // 2. Estructura completa por Nombre de Tarea -> Nombre de Subtarea -> Nombre de Actividad (Sin numeraciones artificiales)
+  const tareas = entries.filter(e => e.tipo === 'Tarea');
+  const subtareas = entries.filter(e => e.tipo === 'Subtarea');
+  const avances = entries.filter(e => e.tipo === 'Avance');
+
+  lineas.push('=== REGISTRO COMPLETO DE TAREAS, SUBTAREAS Y ACTIVIDADES DEL PROYECTO ===');
+
+  if (tareas.length === 0) {
+    lineas.push('No hay tareas registradas en este proyecto.');
+  } else {
+    tareas.forEach(t => {
+      const nombreTarea = limpiarHtmlATexto_(t.desc);
+      const descContexto = limpiarHtmlATexto_(t.descripcionTarea);
+      const notaTarea = limpiarHtmlATexto_(t.nota);
+      const condicionTarea = t.estado !== 'Completado' ? 'ABIERTA/ACTIVA' : 'COMPLETADA';
+
+      lineas.push(`TAREA: "${nombreTarea}" | Estado: ${t.estado} (${condicionTarea}) | Creada por: ${t.owner} | Inicio: ${t.fechaInicio || '-'}`);
+      if (descContexto) lineas.push(`  Contexto de "${nombreTarea}": ${descContexto}`);
+      if (notaTarea)    lineas.push(`  Notas de "${nombreTarea}": ${notaTarea}`);
+
+      const stsHijas = subtareas.filter(st => String(st.parentId) === String(t.id));
+      if (stsHijas.length === 0) {
+        lineas.push('  (Sin subtareas registradas)');
+      } else {
+        stsHijas.forEach(st => {
+          const nombreSt = limpiarHtmlATexto_(st.desc);
+          const condicionSt = st.estado !== 'Completado' ? 'ABIERTA/ACTIVA' : 'COMPLETADA';
+          const metaSt = [
+            `Estado: ${st.estado} (${condicionSt})`,
+            `Responsable: ${st.owner}`,
+            st.jira ? `Ticket Jira: ${st.jira}` : '',
+            st.msd ? `Ticket MSD: ${st.msd}` : '',
+            st.espTecnica ? `Esp. Técnica: ${limpiarHtmlATexto_(st.espTecnica)}` : '',
+            st.espFuncional ? `Esp. Funcional: ${limpiarHtmlATexto_(st.espFuncional)}` : ''
+          ].filter(Boolean).join(' | ');
+
+          lineas.push(`  SUBTAREA: "${nombreSt}" [Pertenece a Tarea: "${nombreTarea}"] (${metaSt})`);
+
+          const avsHijos = avances.filter(av => String(av.parentId) === String(st.id));
+          if (avsHijos.length === 0) {
+            lineas.push('    (Sin actividades registradas)');
+          } else {
+            avsHijos.forEach(av => {
+              const descAv = limpiarHtmlATexto_(av.desc);
+              const alertaAv = limpiarHtmlATexto_(av.alerta);
+              const bloqAv = limpiarHtmlATexto_(av.bloqueante);
+              const obsAv = formatearObservacionesContexto_(av.observaciones);
+              const infoRezago = calcularInfoAtrasoBackend_(av);
+              const condicionAv = av.estado !== 'Completado' ? 'ABIERTA/ACTIVA' : 'COMPLETADA';
+
+              const detallesAv = [
+                `Realizada por / Responsable: ${av.owner}`,
+                `Estado: ${av.estado} (${condicionAv})`,
+                `Categoría: ${av.categoria || '-'}`,
+                `Inicio: ${av.fechaInicio || '-'}`,
+                `Fin: ${av.fechaFin || 'En curso'}`,
+                infoRezago.enAtraso
+                  ? `REZAGO ACTIVO (+7 días): Sí (${infoRezago.diasAtraso} días sin avance desde ${infoRezago.ultimaRef})`
+                  : 'REZAGO ACTIVO (+7 días): No',
+                av.evidencia ? `Evidencia: ${av.evidencia}` : '',
+                av.entregable ? `Entregable: ${av.entregable}` : '',
+                alertaAv ? `Alerta: ${alertaAv}` : '',
+                bloqAv ? `Bloqueante: ${bloqAv}` : '',
+                obsAv ? `Observaciones: ${obsAv}` : ''
+              ].filter(Boolean).join(' | ');
+
+              lineas.push(`    * ACTIVIDAD: "${descAv}" [Tarea: "${nombreTarea}" > Subtarea: "${nombreSt}"] -> ${detallesAv}`);
+            });
+          }
+        });
+      }
+      lineas.push('');
+    });
+  }
+
+  return lineas.join('\n');
+}
+
+function invocarEndpointBedrock_(modelId, apiKey, requestBody) {
+  const url = `https://bedrock-runtime.${BEDROCK_REGION}.amazonaws.com/model/${encodeURIComponent(modelId)}/converse`;
+  Logger.log('Invocando Bedrock URL: ' + url);
+  return UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'Authorization': 'Bearer ' + apiKey
+    },
+    payload: JSON.stringify(requestBody),
+    muteHttpExceptions: true
+  });
+}
+
+function consultarChatLiderBedrock(payload) {
+  const email = obtenerEmailUsuarioActivo_();
+  const ss = getDB();
+
+  // 1. Verificar que el usuario tenga estrictamente el rol 'Líder'
+  const usuSheet = ss.getSheetByName('Usuarios');
+  if (!usuSheet) return { success: false, error: 'No se encontró la hoja de Usuarios.' };
+  const usersData = usuSheet.getDataRange().getValues();
+  const userRow = usersData.find(r => String(r[0] || '').toLowerCase() === email);
+  if (!userRow || String(userRow[1] || '').trim() !== 'Líder') {
+    return { success: false, error: 'Acceso denegado: este chat está habilitado únicamente para usuarios con rol Líder.' };
+  }
+
+  const pregunta = String((payload && payload.question) || '').trim();
+  const projectId = String((payload && payload.projectId) || '').trim();
+  const projectName = String((payload && payload.projectName) || '').trim();
+
+  if (!pregunta) return { success: false, error: 'Por favor escribe una pregunta.' };
+  if (!projectId) return { success: false, error: 'Selecciona un proyecto válido.' };
+
+  // 2. Obtener API Key de Bedrock (desde constante o desde ScriptProperties)
+  const apiKey = (AWS_BEARER_TOKEN_BEDROCK && AWS_BEARER_TOKEN_BEDROCK.trim()) ||
+                 PropertiesService.getScriptProperties().getProperty('AWS_BEARER_TOKEN_BEDROCK') || '';
+
+  if (!apiKey) {
+    return {
+      success: false,
+      error: 'Falta configurar AWS_BEARER_TOKEN_BEDROCK en Código.gs o en las Propiedades del Script.'
+    };
+  }
+
+  // 3. Construir contexto completo del proyecto seleccionado (sin filtros de fecha)
+  const contextoProyecto = construirContextoProyectoChat_(ss, projectId, projectName);
+
+  const systemInstruction = [
+    'Eres Morgan, el asistente y buscador exclusivo del proyecto seleccionado en Optimia.',
+    'REGLAS OBLIGATORIAS:',
+    '1. RESTRICCIÓN AL PROYECTO ACTUAL: Responde ÚNICAMENTE con los datos del proyecto incluidos en el contexto (que contiene todo lo registrado por cada colaborador sin importar fechas). Si preguntan sobre temas generales o ajenos al proyecto, responde exactamente: "Solo puedo responder consultas sobre la información registrada en el proyecto seleccionado."',
+    '2. RESPETO ESTRICTO POR LOS ESTADOS: Ten siempre presente el Estado de cada elemento (No iniciado, En proceso, Detenido, Completado). Si piden cosas "activas" o "abiertas", muestra SOLO lo que NO esté en estado Completado. Si buscan una palabra o quién hizo algo, muestra todas las coincidencias indicando claramente su Estado actual y quién la realizó (correo del colaborador).',
+    '3. PROHIBIDO USAR CÓDIGOS GENÉRICOS: NUNCA escribas "TAREA 1", "TAREA-ss" ni numeraciones artificiales. Escribe SIEMPRE el nombre real de la Tarea, el nombre real de la Subtarea y la descripción de la Actividad.',
+    '4. FORMATO HTML LIMPIO Y CORTO: Sé muy claro, corto y directo. Responde usando HTML limpio (<ul>, <li>, <strong>, <em>, <br>, <p>) para listas y jerarquías. NO envuelvas la respuesta en bloques ```html ni uses sintaxis Markdown (** o #).'
+  ].join('\n');
+
+  const promptUsuario = `DATOS COMPLETOS DEL PROYECTO SELECCIONADO:\n${contextoProyecto}\n\nCONSULTA O BÚSQUEDA DEL LÍDER:\n${pregunta}`;
+
+  const requestBody = {
+    system: [{ text: systemInstruction }],
+    messages: [
+      {
+        role: 'user',
+        content: [{ text: promptUsuario }]
+      }
+    ],
+    inferenceConfig: {
+      maxTokens: 900
+    }
+  };
+
+  try {
+    let res = invocarEndpointBedrock_(BEDROCK_MODEL, apiKey, requestBody);
+    let status = res.getResponseCode();
+    let rawText = res.getContentText();
+
+    // Si el perfil principal no está activo o el ID difiere en la cuenta AWS, intenta con el fallback
+    if ((status === 400 || status === 404) && BEDROCK_FALLBACK_MODEL && BEDROCK_FALLBACK_MODEL !== BEDROCK_MODEL) {
+      res = invocarEndpointBedrock_(BEDROCK_FALLBACK_MODEL, apiKey, requestBody);
+      status = res.getResponseCode();
+      rawText = res.getContentText();
+    }
+
+    if (status < 200 || status >= 300) {
+      return { success: false, error: `Error Bedrock (${status}): ${rawText}` };
+    }
+
+    const data = JSON.parse(rawText);
+    const rawAnswer = (data && data.output && data.output.message && data.output.message.content && data.output.message.content[0])
+      ? data.output.message.content[0].text
+      : 'Sin respuesta del modelo.';
+
+    // Limpiar eventuales bloques ```html o markdown residual conservando las etiquetas HTML limpias
+    const cleanHtmlAnswer = String(rawAnswer)
+      .replace(/^```html\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```$/i, '')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .trim();
+
+    return { success: true, answer: cleanHtmlAnswer };
+  } catch (e) {
+    return { success: false, error: 'Excepción al conectar con Bedrock: ' + e.message };
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  PROYECTOS CERRADOS
+// ══════════════════════════════════════════════════
 function cObtenerProyectosCerrados() {
-  const email = Session.getActiveUser().getEmail().toLowerCase();
+  const email = obtenerEmailUsuarioActivo_();
   const ss = getDB();
   const configSheet = ss.getSheetByName('Usuarios');
   if (!configSheet) return [];
 
   const usersData = configSheet.getDataRange().getValues();
-  const userRow = usersData.find(r => r[0].toLowerCase() === email);
+  const userRow = usersData.find(r => String(r[0] || '').toLowerCase() === email);
   if (!userRow) return [];
   const role = userRow[1];
 
