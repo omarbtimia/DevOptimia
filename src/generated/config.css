@@ -1,0 +1,33 @@
+:root { --optimia-black: #2D2926; --optimia-red: #A6192E; --optimia-gray: #f8f9fa; }
+        body { background: var(--optimia-gray); font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .header-app { background: var(--optimia-black); border-bottom: 4px solid var(--optimia-red); padding: 1rem 0; color: white; }
+        .brand-logo { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-back { font-size: 0.75rem; padding: 4px 10px; border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 4px; background: transparent; cursor: pointer; }
+        .btn-back:hover { background: rgba(255,255,255,0.1); }
+
+        /* Tabs */
+        .cfg-tabs { display: flex; gap: 4px; border-bottom: 2px solid #dee2e6; margin-bottom: 1.5rem; }
+        .cfg-tab { padding: 8px 20px; font-weight: 700; font-size: 0.85rem; cursor: pointer; border-radius: 6px 6px 0 0; border: none; background: transparent; color: #6c757d; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+        .cfg-tab:hover { color: var(--optimia-black); background: #f0f0f0; }
+        .cfg-tab.active { color: var(--optimia-red); border-bottom-color: var(--optimia-red); background: white; }
+
+        /* Cards de sección */
+        .cfg-card { background: white; border-radius: 10px; border: 1px solid #dee2e6; padding: 1.5rem; margin-bottom: 1rem; }
+        .cfg-card-title { font-weight: 800; font-size: 1rem; color: var(--optimia-black); margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+
+        /* Tabla de items */
+        .cfg-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .cfg-table th { background: var(--optimia-black); color: white; padding: 8px 12px; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .cfg-table td { padding: 10px 12px; border-bottom: 1px solid #f1f1f1; vertical-align: middle; }
+        .cfg-table tr:last-child td { border-bottom: none; }
+        .cfg-table tr:hover td { background: #fafafa; }
+        .badge-rol { font-size: 0.7rem; padding: 3px 8px; border-radius: 12px; font-weight: 700; }
+        .badge-lider { background: #fff3cd; color: #856404; }
+        .badge-colab { background: #e9ecef; color: #495057; }
+        .empty-state { text-align: center; padding: 2rem; color: #adb5bd; font-size: 0.875rem; }
+
+        /* Asignaciones */
+        .asig-tag { display: inline-flex; align-items: center; gap: 5px; background: #e9f0ff; color: #3451b2; border-radius: 12px; padding: 2px 10px; font-size: 0.75rem; font-weight: 600; margin: 2px; }
+        .asig-tag button { background: none; border: none; color: #3451b2; cursor: pointer; font-size: 0.75rem; padding: 0; line-height: 1; }
+
+        #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }

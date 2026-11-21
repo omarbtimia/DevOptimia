@@ -73,7 +73,7 @@
             box-shadow: none !important;
         }
         .ctrl-group select option { background: #18181B; color: #fff; }
-        .btn-top-action {
+        .btn.btn-top-action {
             border-radius: 8px;
             font-size: 0.78rem;
             font-weight: 600;
@@ -86,7 +86,7 @@
             color: #fff;
             border: 1px solid rgba(255,255,255,0.2);
         }
-        .btn-top-action:hover {
+        .btn.btn-top-action:hover {
             background: rgba(255,255,255,0.22);
             color: #fff;
         }
@@ -94,47 +94,47 @@
         /* ══════════════════════════════════════════════════
            BOTONES SUAVES (ESTILO EDITAR / BAJO RUIDO VISUAL)
            ══════════════════════════════════════════════════ */
-        .btn-soft {
+        .btn.btn-soft {
             background: #FFFFFF;
             color: #475569;
             border: 1px solid #CBD5E1;
             transition: all 0.15s ease;
         }
-        .btn-soft:hover {
+        .btn.btn-soft:hover {
             background: #F1F5F9;
             color: #1E293B;
             border-color: #94A3B8;
         }
-        .btn-soft-primary {
+        .btn.btn-soft-primary {
             background: #F8FAFC;
             color: #334155;
             border: 1px solid #CBD5E1;
             transition: all 0.15s ease;
         }
-        .btn-soft-primary:hover {
+        .btn.btn-soft-primary:hover {
             background: #EFF6FF;
             color: #1D4ED8;
             border-color: #93C5FD;
         }
-        .btn-soft-danger {
+        .btn.btn-soft-danger {
             background: #FFFFFF;
             color: #64748B;
             border: 1px solid #CBD5E1;
             transition: all 0.15s ease;
         }
-        .btn-soft-danger:hover {
+        .btn.btn-soft-danger:hover {
             background: #FEF2F2;
             color: #DC2626;
             border-color: #FCA5A5;
         }
-        .btn-save-modal {
+        .btn.btn-save-modal {
             background: #334155;
             color: #FFFFFF;
             border: 1px solid #1E293B;
             border-radius: 8px;
             transition: all 0.15s ease;
         }
-        .btn-save-modal:hover {
+        .btn.btn-save-modal:hover {
             background: #1E293B;
             color: #FFFFFF;
         }
@@ -169,7 +169,7 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
         }
 
-        .btn-toolbar-custom {
+        .btn.btn-toolbar-custom {
             border-radius: 8px;
             font-size: 0.8rem;
             font-weight: 600;
@@ -443,7 +443,7 @@
         .st-block   { background: var(--col-bloqueante); color: #ffffff; }
         .st-done    { background: var(--col-completado); color: #ffffff; }
 
-        .btn-micro {
+        .btn.btn-micro {
             height: 26px;
             padding: 0 9px;
             font-size: 0.72rem;
@@ -936,7 +936,7 @@
         <div class="control-panel">
             <div class="ctrl-group" title="Proyecto activo">
                 <i class="bi bi-folder2-open"></i>
-                <select id="projSelect" class="form-select form-select-sm" style="min-width: 145px;" onchange="actualizarColaboradoresSelect(); actualizarHeaderChatProyecto(); loadData();"></select>
+                <select id="projSelect" class="form-select form-select-sm" style="min-width: 145px;" onchange="actualizarColaboradoresSelect(); actualizarPermisosProyecto(); loadData();"></select>
             </div>
             <div class="ctrl-group" title="Colaborador / Vista">
                 <i class="bi bi-person-badge"></i>
@@ -947,6 +947,9 @@
             </button>
             <button class="btn btn-top-action" onclick="goHome()">
                 <i class="bi bi-house-door"></i> INICIO
+            </button>
+            <button class="btn btn-top-action" onclick="logout()">
+                <i class="bi bi-box-arrow-right"></i> LOGOUT
             </button>
         </div>
     </div>
@@ -1378,7 +1381,7 @@
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
 <script>
-    var rawData = [], userList = [], categorias = [], notasData = {}, currentTab = 'gestion', mEntry, mNota, mKanbanDetail, mAtraso, mGeneral, currentUserEmail = "", userRole = "", hasProjects = false;
+    var rawData = [], userList = [], usuariosPorEmail = new Map(), categorias = [], notasData = {}, currentTab = 'gestion', mEntry, mNota, mKanbanDetail, mAtraso, mGeneral, currentUserEmail = "", hasProjects = false;
     var ckEditor = null, ckNota = null, ckGeneralAlerta = null, ckGeneralBloq = null, ckGeneralNota = null;
     var proyectosData = [], asignacionesData = [];
     var draggedAvanceId = null, isDraggingPostit = false;
@@ -1449,14 +1452,24 @@
         return '';
     }
 
+    function nombreDeEmail(emailStr) {
+        if (!emailStr) return '—';
+        const email = String(emailStr).toLowerCase();
+        const usuario = usuariosPorEmail.get(email);
+        if (usuario?.nombre) return usuario.nombre;
+        return String(emailStr).split('@')[0] || '—';
+    }
+
     function obtenerInicialesEmail(emailStr) {
         if (!emailStr) return 'U';
-        const parte = String(emailStr).split('@')[0];
-        const segmentos = parte.split(/[._-]/).filter(Boolean);
+        const nombre = nombreDeEmail(emailStr);
+        const segmentos = nombre.split(/\s+/).filter(Boolean);
         if (segmentos.length >= 2) {
             return (segmentos[0][0] + segmentos[1][0]).toUpperCase();
         }
-        return parte.substring(0, 2).toUpperCase();
+        const parte = nombre.split(/[._-]/).filter(Boolean);
+        if (parte.length >= 2) return (parte[0][0] + parte[1][0]).toUpperCase();
+        return nombre.substring(0, 2).toUpperCase();
     }
 
     function limpiarTextoAttr(htmlStr, maxLen = 40) {
@@ -1491,13 +1504,30 @@
 
     function obtenerColaboradoresProyectoActual(projIdParam) {
         const projId = projIdParam || document.getElementById('projSelect').value;
-        const proyecto = proyectosData.find(p => String(p.id) === String(projId));
-        const liderEmail = proyecto ? (proyecto.lider || '').trim().toLowerCase() : '';
-        const asignados = asignacionesData
+        return asignacionesData
             .filter(a => String(a.proyectoId) === String(projId) && a.email)
-            .map(a => a.email.trim().toLowerCase());
+            .map(a => a.email.trim().toLowerCase())
+            .filter(Boolean)
+            .sort();
+    }
 
-        return Array.from(new Set([liderEmail, ...asignados].filter(Boolean))).sort();
+    function esLiderProyectoActual(projIdParam) {
+        const projId = projIdParam || document.getElementById('projSelect').value;
+        return asignacionesData.some(a =>
+            String(a.proyectoId) === String(projId) &&
+            String(a.email).toLowerCase() === currentUserEmail &&
+            a.rol === 'Líder'
+        );
+    }
+
+    function puedeEditarOwner(owner, projIdParam) {
+        return String(owner || '').toLowerCase() === currentUserEmail || esLiderProyectoActual(projIdParam);
+    }
+
+    function actualizarPermisosProyecto() {
+        const fab = document.getElementById('leaderChatFab');
+        if (fab) fab.style.display = esLiderProyectoActual() ? 'inline-flex' : 'none';
+        actualizarHeaderChatProyecto();
     }
 
     window.onload = () => {
@@ -1614,7 +1644,8 @@
 
         showL(true);
         google.script.run.withSuccessHandler(res => {
-            userList = res.userList; currentUserEmail = res.email.toLowerCase(); userRole = res.role;
+            userList = res.userList || []; currentUserEmail = res.email.toLowerCase();
+            usuariosPorEmail = new Map((res.usuarios || []).map(u => [u.email.toLowerCase(), u]));
             categorias = res.categorias || [];
             proyectosData = res.projects || [];
             asignacionesData = res.asignaciones || [];
@@ -1634,11 +1665,7 @@
                 document.getElementById('btnNewTask').style.display = 'inline-flex';
                 document.getElementById('btnGeneralInfo').style.display = 'inline-flex';
 
-                // Mostrar botón flotante de Morgan únicamente si el usuario tiene rol 'Líder'
-                if (userRole === 'Líder') {
-                    document.getElementById('leaderChatFab').style.display = 'inline-flex';
-                    actualizarHeaderChatProyecto();
-                }
+                actualizarPermisosProyecto();
 
                 loadData();
             } else {
@@ -1662,7 +1689,7 @@
     }
 
     function toggleLeaderChat() {
-        if (userRole !== 'Líder') return;
+        if (!esLiderProyectoActual()) return;
         const widget = document.getElementById('leaderChatWidget');
         const isVisible = widget.style.display === 'flex';
         widget.style.display = isVisible ? 'none' : 'flex';
@@ -1711,7 +1738,7 @@
     }
 
     function enviarPreguntaChatLider() {
-        if (userRole !== 'Líder') return;
+        if (!esLiderProyectoActual()) return;
         const input = document.getElementById('leaderChatInput');
         const btn   = document.getElementById('leaderChatSendBtn');
         const pregunta = input.value.trim();
@@ -1766,20 +1793,21 @@
 
         const listaModal = colaboradoresAsignados.length > 0 ? colaboradoresAsignados : [currentUserEmail];
         listaModal.forEach(u => {
-            selFO.add(new Option(u, u));
-            selGO.add(new Option(u, u));
+            selFO.add(new Option(nombreDeEmail(u), u));
+            selGO.add(new Option(nombreDeEmail(u), u));
         });
 
-        if (userRole !== 'Líder') {
-            selU.add(new Option(currentUserEmail, currentUserEmail));
+        if (!esLiderProyectoActual()) {
+            selU.add(new Option(nombreDeEmail(currentUserEmail), currentUserEmail));
             selU.value = currentUserEmail;
             return;
         }
 
         selU.add(new Option('VISTA GLOBAL', 'TODOS'));
 
-        const opcionesSelector = Array.from(new Set([currentUserEmail, ...colaboradoresAsignados].filter(Boolean))).sort();
-        opcionesSelector.forEach(u => selU.add(new Option(u, u)));
+        const opcionesSelector = Array.from(new Set([currentUserEmail, ...colaboradoresAsignados].filter(Boolean)))
+            .sort((a, b) => nombreDeEmail(a).localeCompare(nombreDeEmail(b), 'es'));
+        opcionesSelector.forEach(u => selU.add(new Option(nombreDeEmail(u), u)));
 
         if (previo && Array.from(selU.options).some(o => o.value === previo)) {
             selU.value = previo;
@@ -2076,7 +2104,7 @@
 
                         stGroup.avancesList.forEach(it => {
                             const indicadores = [];
-                            const tienePermisoEdicion = (it.av.owner === currentUserEmail || userRole === 'Líder');
+                            const tienePermisoEdicion = puedeEditarOwner(it.av.owner, it.av.projectId);
 
                             if (it.infoAtraso.enAtraso) {
                                 indicadores.push(`<span class="badge rounded-pill" style="background:#fffbe6;color:#ad6800;border:1px solid #FAAD14;font-size:0.6rem;" title="En atraso (${it.infoAtraso.diasAtraso} días)">⏰ ${it.infoAtraso.diasAtraso}d</span>`);
@@ -2090,7 +2118,7 @@
                                 indicadores.push(`<span title="Actividad interna">🔒</span>`);
                             }
 
-                            const userShort = (it.av.owner || '').split('@')[0];
+                            const userShort = nombreDeEmail(it.av.owner);
                             const iniciales = obtenerInicialesEmail(it.av.owner);
 
                             const puedeMover = tienePermisoEdicion && it.av.estado !== 'Completado';
@@ -2141,7 +2169,7 @@
 
     function onPostitDragStart(e, avanceId, cardEl) {
         const av = rawData.find(x => x.id === avanceId);
-        if (!av || av.estado === 'Completado' || (av.owner !== currentUserEmail && userRole !== 'Líder')) {
+        if (!av || av.estado === 'Completado' || !puedeEditarOwner(av.owner, av.projectId)) {
             e.preventDefault();
             return;
         }
@@ -2186,8 +2214,8 @@
             return;
         }
 
-        if (av.owner !== currentUserEmail && userRole !== 'Líder') {
-            alert('⚠️ Solo el responsable de la actividad o un Líder pueden cambiar su estado.');
+        if (!puedeEditarOwner(av.owner, av.projectId)) {
+            alert('⚠️ Solo el responsable de la actividad o el líder del proyecto pueden cambiar su estado.');
             return;
         }
 
@@ -2322,9 +2350,9 @@
         const infoAtraso = calcularInfoAtraso(av);
         const obsInfo    = separarObservacionesYAtrasos(av.observaciones || '');
         const infoColAv  = obtenerInfoColorEstado(av.estado, av);
-        const puedeEditar = (av.owner === currentUserEmail || userRole === 'Líder');
+        const puedeEditar = puedeEditarOwner(av.owner, av.projectId);
 
-        document.getElementById('kdHeaderOwner').innerText = `Responsable: ${av.owner}  |  Categoría: ${av.categoria || 'Sin categoría'}`;
+        document.getElementById('kdHeaderOwner').innerText = `Responsable: ${nombreDeEmail(av.owner)}  |  Categoría: ${av.categoria || 'Sin categoría'}`;
 
         const atrasosHtml = obsInfo.atrasos.length
             ? `<div class="mt-3 pt-2 border-top">
@@ -2482,15 +2510,15 @@
     function abrirModalGeneral(targetOwner) {
         const selGO = document.getElementById('gOwner');
         const selUser = document.getElementById('userSelect').value;
-        const ownerInicial = targetOwner || (userRole === 'Líder'
+        const ownerInicial = targetOwner || (esLiderProyectoActual()
             ? (selUser === 'TODOS' ? currentUserEmail : selUser)
             : currentUserEmail);
 
         if (!Array.from(selGO.options).some(o => o.value === ownerInicial)) {
-            selGO.add(new Option(ownerInicial, ownerInicial));
+            selGO.add(new Option(nombreDeEmail(ownerInicial), ownerInicial));
         }
         selGO.value = ownerInicial;
-        selGO.disabled = (userRole !== 'Líder');
+        selGO.disabled = !esLiderProyectoActual();
 
         cargarDatosModalGeneralPorUsuario();
         mGeneral.show();
@@ -2536,7 +2564,8 @@
     function renderUI() {
         const cont = document.getElementById('mainUI'); cont.innerHTML = "";
         const selUser = document.getElementById('userSelect').value;
-        const targets = (selUser === "TODOS") ? obtenerColaboradoresProyectoActual() : [selUser];
+        const p = document.getElementById('projSelect').value;
+        const targets = (selUser === "TODOS") ? obtenerColaboradoresProyectoActual(p) : [selUser];
 
         const rSearch   = (currentTab === 'reporte' && document.getElementById('rSearch')) ? document.getElementById('rSearch').value.toLowerCase().trim() : '';
         const rTaskCond = (currentTab === 'reporte' && document.getElementById('rTaskCondFilter')) ? document.getElementById('rTaskCondFilter').value : '';
@@ -2564,7 +2593,7 @@
                     genDiv.className = 'general-info-card';
                     let genHtml = `<div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="small fw-bold text-uppercase" style="color:var(--optimia-black);letter-spacing:0.5px;">📌 Información General del Proyecto</span>`;
-                    if (currentTab === 'gestion' && (user === currentUserEmail || userRole === 'Líder')) {
+                    if (currentTab === 'gestion' && puedeEditarOwner(user, p)) {
                         genHtml += `<button class="btn btn-soft btn-micro" onclick="abrirModalGeneral('${user}')">✏️ Editar General</button>`;
                     }
                     genHtml += `</div>`;
@@ -2833,7 +2862,7 @@
                     userHeader.className = "user-section-header";
                     userHeader.innerHTML = `
                         <span class="user-avatar-badge">${obtenerInicialesEmail(user)}</span>
-                        <span class="user-section-title">Colaborador: ${user}</span>
+                        <span class="user-section-title">Colaborador: ${nombreDeEmail(user)}</span>
                     `;
                     cont.appendChild(userHeader);
                     cont.appendChild(userBlock);
@@ -3001,9 +3030,9 @@
         const selOwner = document.getElementById('fOwner');
         const targetOwner = owner || (document.getElementById('userSelect').value === "TODOS" ? currentUserEmail : document.getElementById('userSelect').value);
         if (targetOwner && !Array.from(selOwner.options).some(o => o.value === targetOwner)) {
-            selOwner.add(new Option(targetOwner, targetOwner));
+            selOwner.add(new Option(nombreDeEmail(targetOwner), targetOwner));
         }
-        if (userRole === "Líder") {
+        if (esLiderProyectoActual(pProj)) {
             selOwner.disabled = false;
             selOwner.value = targetOwner;
         } else {
@@ -3165,7 +3194,7 @@
         google.script.run
             .withSuccessHandler(() => { mNota.hide(); loadData(); })
             .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
-            .saveNota({ tareaId, owner: tarea.owner, contenido });
+            .saveNota({ tareaId, owner: tarea.owner, projectId: tarea.projectId, contenido });
     }
 
     function eliminarAvance(id, desc) {
@@ -3307,6 +3336,7 @@
         const avanceId      = document.getElementById('atrasoAvanceId').value;
         const owner         = document.getElementById('atrasoOwner').value;
         const justificacion = document.getElementById('atrasoTexto').value.trim();
+        const avance = rawData.find(e => e.id === avanceId);
 
         if (!justificacion) {
             alert('⚠️ Debes ingresar una justificación.');
@@ -3318,7 +3348,7 @@
         google.script.run
             .withSuccessHandler(() => { mAtraso.hide(); loadData(); })
             .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
-            .saveAtrasoAvance({ avanceId, owner, justificacion });
+            .saveAtrasoAvance({ avanceId, owner, projectId: avance?.projectId, justificacion });
     }
 
     function formatearItemsSublistaReporte(htmlTexto) {
@@ -3496,11 +3526,12 @@
     }
 
     function goHome() {
-        showL(true);
-        google.script.run
-            .withSuccessHandler(html => { document.open(); document.write(html); document.close(); })
-            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
-            .getView('home');
+        document.getElementById('loading').style.display = 'flex';
+        window.location.href = '/';
+    }
+
+    function logout() {
+        fetch('/api/auth/logout', { method: 'POST' }).finally(() => { window.location.href = '/login'; });
     }
 </script>
 </body>
