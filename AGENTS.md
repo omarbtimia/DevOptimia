@@ -18,6 +18,7 @@ Next.js 16 (App Router) web app with a Node backend and local SQLite. Google She
 - Global profiles are exactly `Administrador` and `Usuario`. `Administrador` only unlocks config; it does **not** grant automatic leader powers in `/abiertos`.
 - `assignments.rol` is exactly `Líder` or `Colaborador` **per project**. A user may lead several projects and collaborate in others; a project may have several leaders.
 - Config write endpoints are Administrador-only. In `/abiertos`, everyone sees only assigned projects; editing others' entries, `VISTA GLOBAL` and Morgan require `Líder` in that project. See `src/lib/permissions.js`. Do not weaken these checks without reason.
+- Every mutation (config, entries, notes, delays, login/logout, chat queries) must write an `audit` row via `src/lib/audit.js`; no audit visualization is exposed in the UI yet.
 
 ## Data model (`src/lib/db.js`)
 - Tables: `users`, `sessions`, `projects`, `categories`, `assignments`, `entries`, `audit`. Schema is created idempotently on first `getDb()`. README documents every column.

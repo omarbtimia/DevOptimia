@@ -3,8 +3,8 @@ import { getDb } from './db.js';
 import { hashPassword } from './crypto.js';
 import { requireAdmin } from './auth.js';
 import { ApiError } from './errors.js';
+import { audit } from './audit.js';
 import {
-  audit,
   fetchAllEntriesData,
   fetchEntriesData,
   saveAtrasoAvance,
@@ -224,5 +224,11 @@ export const HANDLERS = {
     assertPuedeEditarRegistro(user, data.owner, data.projectId || proyectoDeEntrada(data.avanceId));
     return saveAtrasoAvance(data, user);
   },
-  consultarChatLiderBedrock: (params, user) => consultarChatLiderBedrock(params[0] || {}, user),
+  consultarChatLiderBedrock: async (params, user) => {
+    const data = params[0] || {};
+    const resultado = await consultarChatLiderBedrock(data, user);
+    audit('CONSULTAR', 'Chat', String(data.projectId || ''),
+      `Pregunta: ${String(data.question || '').slice(0, 160)}`, user);
+    return resultado;
+  },
 };

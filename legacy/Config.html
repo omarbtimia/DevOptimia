@@ -110,6 +110,7 @@
             <div id="asig-content"><p class="empty-state">Cargando...</p></div>
         </div>
     </div>
+
 </div>
 
 <!-- MODAL -->
@@ -159,7 +160,7 @@
         ['usuarios','proyectos','categorias','asignaciones'].forEach(t => {
             document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
         });
-        document.querySelectorAll('.cfg-tab').forEach((btn, i) => {
+        document.querySelectorAll('.cfg-tab').forEach(btn => {
             btn.classList.toggle('active', btn.innerText.includes(
                 {usuarios:'Usuarios', proyectos:'Proyectos', categorias:'Categorías', asignaciones:'Asignaciones'}[tab]
             ));

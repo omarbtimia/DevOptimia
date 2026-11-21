@@ -143,10 +143,12 @@ Una fila por Tarea / Subtarea / Avance / Información general. Sustituye las hoj
 | `id` | INTEGER | PK. |
 | `timestamp` | TEXT | `YYYY-MM-DD HH:mm:ss` (Bogotá). |
 | `usuario` | TEXT | Email de quien ejecuta la acción. |
-| `accion` | TEXT | `CREAR`, `EDITAR`, `ELIMINAR`. |
+| `accion` | TEXT | `CREAR`, `EDITAR`, `ELIMINAR`, `LOGIN`, `LOGIN_FALLIDO`, `LOGOUT`, `CONSULTAR`. |
 | `tipo` | TEXT | Entidad afectada. |
 | `id_registro` | TEXT | Id de la entidad. |
 | `detalle` | TEXT | Detalle libre. |
+
+Toda mutación de la app (configuración, entradas, notas, atrasos, login/logout y consultas a Morgan) genera una fila mediante `src/lib/audit.js`. Todavía no hay visualización de auditoría en la interfaz.
 
 ### Correspondencia con las hojas antiguas
 
