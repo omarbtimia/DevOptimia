@@ -16,9 +16,10 @@
         .btn-home { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 1rem 1.5rem; border-radius: 10px; font-weight: 700; font-size: 1rem; border: none; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; margin-bottom: 1rem; }
         .btn-home:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
         .btn-home-open   { background: var(--optimia-red); color: white; }
-        .btn-home-closed { background: var(--optimia-black); color: white; }
         .btn-home-config { background: white; color: var(--optimia-black); border: 2px solid var(--optimia-black); }
         .btn-home-icon { font-size: 1.4rem; }
+        .btn-logout { margin-left: 12px; background: transparent; border: 1px solid rgba(255,255,255,0.35); color: white; border-radius: 4px; font-size: 0.75rem; padding: 4px 10px; cursor: pointer; }
+        .btn-logout:hover { background: rgba(255,255,255,0.1); }
         #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }
     </style>
 </head>
@@ -28,7 +29,10 @@
 <div class="header-app">
     <div class="container d-flex justify-content-between align-items-center">
         <span class="brand-logo">Optimia</span>
-        <span id="userLabel" class="text-white-50 small"></span>
+        <div class="d-flex align-items-center">
+            <span id="userLabel" class="text-white-50 small"></span>
+            <button class="btn-logout" onclick="logout()">Logout</button>
+        </div>
     </div>
 </div>
 
@@ -38,11 +42,7 @@
         <p>Selecciona el tipo de proyectos que deseas gestionar</p>
         <button class="btn-home btn-home-open" onclick="goTo('abiertos')">
             <span class="btn-home-icon">📂</span>
-            <span>Proyectos Abiertos</span>
-        </button>
-        <button id="btnCerrados" class="btn-home btn-home-closed" style="display:none" onclick="goTo('cerrados')">
-            <span class="btn-home-icon">🗄️</span>
-            <span>Proyectos Cerrados</span>
+            <span>Gestionar Proyectos</span>
         </button>
         <button id="btnConfig" class="btn-home btn-home-config" style="display:none" onclick="goTo('config')">
             <span class="btn-home-icon">⚙️</span>
@@ -54,19 +54,21 @@
 <script>
     window.onload = () => {
         google.script.run.withSuccessHandler(res => {
-            document.getElementById('userLabel').innerText = res.email || '';
-            if (res.role === 'Líder') {
-                document.getElementById('btnCerrados').style.display = 'flex';
-                document.getElementById('btnConfig').style.display   = 'flex';
+            document.getElementById('userLabel').innerText = res.nombre || res.email || '';
+            if (res.role === 'Administrador') {
+                document.getElementById('btnConfig').style.display = 'flex';
             }
         }).getAppData();
     };
 
     function goTo(vista) {
+        const rutas = { home: '/', abiertos: '/abiertos', config: '/config' };
         document.getElementById('loading').style.display = 'flex';
-        google.script.run.withSuccessHandler(html => {
-            document.open(); document.write(html); document.close();
-        }).getView(vista);
+        window.location.href = rutas[vista] || '/';
+    }
+
+    function logout() {
+        fetch('/api/auth/logout', { method: 'POST' }).finally(() => { window.location.href = '/login'; });
     }
 </script>
 </body>

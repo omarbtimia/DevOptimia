@@ -1,210 +1,177 @@
-# DevOptimia - Guia de configuracion
+# Optimia (Next.js + SQLite)
 
-Este documento sirve como base para configurar y operar el proyecto **Optimia** (Google Apps Script + HTML Service) en nuevos entornos.
+Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con backend propio y SQLite. El comportamiento y la interfaz de **proyectos abiertos, configuración y chat de líderes de proyecto** se conservan; **proyectos cerrados fueron eliminados** por completo.
 
-## 1) Descripcion rapida
+## Requisitos y arranque
 
-Aplicacion web en Apps Script para gestionar:
+- Node.js >= 22.5 (recomendado 24) y npm.
+- No se necesita Google Sheets ni `clasp`.
 
-- Proyectos abiertos (`Index.html`)
-- Proyectos cerrados (`Cerrados.html`)
-- Configuracion de usuarios, proyectos, categorias y asignaciones (`Config.html`)
-
-Backend principal en `Codigo.gs`.
-
-## 2) Estructura del proyecto
-
-- `Codigo.gs`: logica de negocio y acceso a Google Sheets.
-- `Home.html`: menu principal.
-- `Index.html`: gestion de proyectos abiertos.
-- `Cerrados.html`: gestion de proyectos cerrados.
-- `Config.html`: administracion de catalogos y asignaciones.
-- `appsscript.json`: manifiesto Apps Script.
-- `.clasp.json`: enlace local con el proyecto Apps Script.
-- `.github/workflows/deploy.yml`: despliegue automatico via GitHub Actions.
-
-## 3) Prerrequisitos
-
-1. Cuenta Google con permisos para Apps Script y Google Sheets.
-2. Proyecto Apps Script creado y enlazado con `clasp`.
-3. Google Sheet de datos creado y compartido con los usuarios que corresponda.
-4. (Opcional) Repositorio GitHub para despliegue CI/CD.
-
-## 4) Identificadores importantes (IDs)
-
-### 4.1 ID del proyecto Apps Script
-
-Se define en `.clasp.json`:
-
-```json
-{
-  "scriptId": "<APPS_SCRIPT_ID>",
-  "rootDir": "."
-}
+```bash
+npm install
+npm run db:init      # crea ./data/optimia.sqlite y siembra el usuario admin
+npm run dev          # http://localhost:3000
 ```
 
-### 4.2 ID del Google Sheet de datos
+La base se crea sola en el primer arranque si no existe. `npm run db:init` es explícito y seguro. Las bases anteriores se migran solas: el antiguo perfil `Líder` pasa a `Administrador`, `Colaborador` pasa a `Usuario`, y cada asignación recibe su propio rol.
 
-Actualmente se usa en `Codigo.gs` como variable global (`SHEET_ID`).
+### Acceso inicial
 
-Recomendacion: mover este valor a **Script Properties** para no hardcodearlo en codigo.
+| Usuario | Contraseña | Perfil |
+| --- | --- | --- |
+| `admin` | `admin` | `Administrador` |
 
-## 5) Configuracion de secretos
+Cámbiala en **Configuración → Usuarios → Editar admin → Contraseña**. El login acepta el `username` o el `email`. Los usuarios nuevos se crean en Configuración con nombre, email, contraseña inicial y perfil (`Administrador` o `Usuario`). El perfil `Administrador` da acceso a **Configuración**; en la vista abierta los permisos de edición global y chat dependen del rol de la asignación en ese proyecto.
 
-### 5.1 Secretos para GitHub Actions
+### Variables de entorno
 
-El workflow `deploy.yml` requiere estos secretos:
+Copia `.env.example` a `.env.local`:
 
-- `CLASPRC_JSON`: contenido JSON de `~/.clasprc.json` de una cuenta con acceso al script.
-- `DEPLOYMENT_ID`: ID del deployment de Apps Script a actualizar.
+| Variable | Uso |
+| --- | --- |
+| `SQLITE_PATH` | Nombre del archivo dentro de `./data` (por defecto `optimia.sqlite`). |
+| `AWS_BEARER_TOKEN_BEDROCK` | Token bearer para el chat "Morgan" (solo para quien esté asignado como `Líder` en el proyecto activo). Sin él, el chat devuelve un error controlado. |
 
-> Nota: si usas ramas por ambiente, define secretos por entorno (dev/qa/prod) en GitHub Environments.
+## Comandos
 
-### 5.2 Secretos/propiedades en Apps Script (recomendado)
+| Comando | Descripción |
+| --- | --- |
+| `npm run dev` | Servidor de desarrollo. |
+| `npm run build` / `npm start` | Build y servidor de producción. |
+| `npm run lint` | ESLint. |
+| `npm run db:init` | Crea/verifica esquema y usuario admin. |
+| `npm run ui:sync` | Regenera `src/generated/*` desde `legacy/*.html`. |
 
-Configurar en **Project Settings > Script properties**:
+## Estructura
 
-- `SHEET_ID`: ID del Google Sheet de datos.
-- `APP_ENV`: `dev` | `qa` | `prod`.
-- `ALLOWED_DOMAIN` (opcional): dominio permitido para acceso.
+- `legacy/Home.html`, `legacy/Index.html`, `legacy/Config.html`: **fuente visual** de las tres pantallas (idénticas a las originales salvo navegación, quita de cerrados y campo de contraseña).
+- `src/generated/*.css|markup.js|client.js`: copias generadas que consume Next. **No editar a mano**; editar `legacy/` y correr `npm run ui:sync`.
+- `src/app/(app)/`: rutas protegidas `/` (Home), `/abiertos` (Index), `/config` (solo `Administrador`).
+- `src/app/login/`: login con usuario/contraseña.
+- `src/app/api/auth/*`: login/logout (cookie `optimia_session`, httpOnly, 12 h).
+- `src/app/api/rpc/`: único endpoint backend. Recibe `{ method, params }` y despacha a `src/lib/rpc.js`, manteniendo los nombres de las funciones de Apps Script (`getAppData`, `cfgGetAll`, `fetchEntries`, `saveOrUpdateEntry`, …).
+- `src/components/rpcShim.js`: compatibilidad con `google.script.run.withSuccessHandler(...).withFailureHandler(...).metodo(...)` para que el JS legado funcione sin cambios.
+- `src/lib/`: SQLite, auth, entradas, permisos, chat Bedrock y helpers.
 
-Ejemplo de lectura en `Codigo.gs`:
+## Base de datos
 
-```javascript
-function getSheetId_() {
-  const v = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
-  if (!v) throw new Error('Falta Script Property SHEET_ID');
-  return v;
-}
+Archivo: `data/optimia.sqlite` (ignorado por git). Zona horaria de la app: `America/Bogota`.
+
+### Tablas
+
+#### `users`
+| Columna | Tipo | Restricción | Descripción |
+| --- | --- | --- | --- |
+| `id` | INTEGER | PK, AUTOINCREMENT | Identificador interno. |
+| `username` | TEXT | UNIQUE, NOCASE | Login (admin = `admin`; usuarios nuevos = su email). |
+| `email` | TEXT | UNIQUE, NOCASE | Email usado como "hoja/owner" y en asignaciones. |
+| `nombre` | TEXT | DEFAULT `''` | Nombre visible en la UI; se rellena desde el email si falta. |
+| `password_hash` | TEXT | NOT NULL | `scrypt$salt$hash` (Nunca texto plano). |
+| `role` | TEXT | `Administrador` \| `Usuario` | Perfil global. `Administrador` accede a Configuración; no otorga privilegios automáticos en proyectos abiertos. |
+| `activo` | INTEGER | DEFAULT 1 | 1 = activo. |
+| `created_at` | TEXT | datetime UTC | Alta. |
+
+#### `sessions`
+| Columna | Tipo | Restricción | Descripción |
+| --- | --- | --- | --- |
+| `token_hash` | TEXT | PK | SHA-256 del token de la cookie (el token sin hashear no se guarda). |
+| `user_id` | INTEGER | FK → `users.id` ON DELETE CASCADE | Usuario de la sesión. |
+| `created_at` | TEXT | datetime UTC | Creación. |
+| `expires_at` | TEXT | datetime UTC | Expira a las 12 h. |
+
+#### `projects`
+| Columna | Tipo | Restricción | Descripción |
+| --- | --- | --- | --- |
+| `id` | TEXT | PK | UUID. |
+| `nombre` | TEXT | NOT NULL | Nombre del proyecto. |
+| `lider_email` | TEXT | NOCASE, DEFAULT `''` | Solo compatibilidad con BD migradas. La fuente real del líder es `assignments.rol = 'Líder'`. |
+| `created_at` | TEXT | datetime UTC | Alta. |
+
+> No existe columna de estado: todos los proyectos son abiertos. Las columnas `FECHA_CIERRE`, `SDA`, `DURACION_SEMANAS` y las hojas de proyectos cerrados se eliminaron.
+
+#### `categories`
+| Columna | Tipo | Descripción |
+| --- | --- | --- |
+| `id` | TEXT | PK (UUID). |
+| `nombre` | TEXT | Nombre de categoría. |
+| `creado_por` | TEXT | Email de quien la creó. |
+| `fecha` | TEXT | `YYYY-MM-DD` (Bogotá). |
+| `created_at` | TEXT | datetime UTC. |
+
+#### `assignments`
+| Columna | Tipo | Restricción | Descripción |
+| --- | --- | --- | --- |
+| `proyecto_id` | TEXT | PK, FK → `projects.id` ON DELETE CASCADE | Proyecto. |
+| `email` | TEXT | PK, NOCASE | Usuario asignado (pool de la vista abierta y contexto de Morgan). |
+| `rol` | TEXT | `Líder` \| `Colaborador`, DEFAULT `Colaborador` | Rol **en este proyecto**. Define edición global, vista `VISTA GLOBAL` y chat. |
+
+#### `entries`
+Una fila por Tarea / Subtarea / Avance / Información general. Sustituye las hojas por usuario.
+
+| Columna BD | Columna hoja original | Tipo | Descripción |
+| --- | --- | --- | --- |
+| `id` | `ID` | TEXT PK | UUID. |
+| `owner_email` | (nombre de la hoja) | TEXT NOCASE | Dueño de la fila. |
+| `project_id` | `ID_Proyecto` | TEXT | Proyecto (sin FK para conservar el comportamiento legado). |
+| `tipo` | `Tipo` | TEXT | `Tarea` \| `Subtarea` \| `Avance` \| `General`. |
+| `parent_id` | `Parent_ID` | TEXT | Jerarquía Tarea → Subtarea → Avance. |
+| `descripcion` | `Descripcion` | TEXT | HTML de CKEditor. |
+| `fecha_inicio` | `Fecha Inicio` | TEXT | `YYYY-MM-DD`. |
+| `fecha_fin` | `Fecha Fin` | TEXT | `YYYY-MM-DD` o vacío. |
+| `estado` | `Estado` | TEXT | `No iniciado`, `En proceso`, `Detenido`, `Completado`, `Eliminada`. |
+| `alerta` | `Alerta` | TEXT | Solo se guarda en Avances `Detenido`. |
+| `bloqueante` | `Bloqueante` | TEXT | Solo se guarda en Avances `Detenido`. |
+| `categoria` | `Categoria` | TEXT | Nombre de categoría. |
+| `nota` | `Nota` | TEXT | HTML de la nota de la Tarea. |
+| `jira` | `Jira` | TEXT | Ticket. |
+| `msd` | `MSD` | TEXT | Ticket. |
+| `esp_tecnica` | `Especificacion Tecnica` | TEXT | HTML. |
+| `esp_funcional` | `Especificacion Funcional` | TEXT | HTML. |
+| `evidencia` | `Evidencia` | TEXT | URL o texto. |
+| `sin_entregable` | `Sin Entregable` | INTEGER | 0/1 (antes `No`/`Sí`). |
+| `observaciones` | `Observaciones` | TEXT | Historial de atrasos: `[YYYY-MM-DD]::texto`, separado por `homoplato`. |
+| `entregable` | `Entregable` | TEXT | URL o texto. |
+| `interno` | `Interno` | INTEGER | 0/1 (antes `No`/`Sí`). |
+| `descripcion_tarea` | `Descripcion_Tarea` | TEXT | Solo Tareas. |
+| `created_at` / `updated_at` | — | TEXT | datetime UTC. |
+
+Índices: `(owner_email, project_id)` y `(parent_id)`.
+
+#### `audit`
+| Columna | Tipo | Descripción |
+| --- | --- | --- |
+| `id` | INTEGER | PK. |
+| `timestamp` | TEXT | `YYYY-MM-DD HH:mm:ss` (Bogotá). |
+| `usuario` | TEXT | Email de quien ejecuta la acción. |
+| `accion` | TEXT | `CREAR`, `EDITAR`, `ELIMINAR`. |
+| `tipo` | TEXT | Entidad afectada. |
+| `id_registro` | TEXT | Id de la entidad. |
+| `detalle` | TEXT | Detalle libre. |
+
+### Correspondencia con las hojas antiguas
+
+| Hoja Apps Script | Tabla SQLite |
+| --- | --- |
+| `Usuarios` | `users` (+ `username`, `password_hash`) |
+| `Proyectos` | `projects` (sin estado ni columnas de cierre) |
+| `Categorias` | `categories` |
+| `Asignaciones` | `assignments` |
+| `Auditoria` | `audit` |
+| Hoja por correo (abiertos) | `entries` filtrando por `owner_email` |
+| Hojas de proyectos cerrados | **Eliminadas** |
+
+## Reglas conservadas
+
+- Normalización de estados: `Por Iniciar`→`No iniciado`, `En Pausa`/`Bloqueada`→`Detenido`, `Terminada`→`Completado`, resto→`En proceso`.
+- No se puede completar una Tarea/Subtarea con hijos sin completar o eliminados.
+- Todos los usuarios (incluido `Administrador`) ven en proyectos abiertos solo los proyectos donde tienen una asignación.
+- La asignación indica si el usuario actúa como `Líder` o `Colaborador` en ese proyecto. Un usuario puede ser líder de uno o varios proyectos y colaborador en otros; un proyecto puede tener varios líderes.
+- Editar registros ajenos, usar `VISTA GLOBAL` y consultar Morgan exigen rol `Líder` **en el proyecto activo** (no basta con el perfil `Administrador`).
+- El chat de Morgan usa el contexto completo del proyecto (sin fecha de corte).
+
+## Verificación
+
+```bash
+npm run lint
+npm run build
 ```
-
-Y luego usarlo en `getDB()`.
-
-## 6) Estructura minima del Google Sheet
-
-La app crea/usa estas hojas:
-
-- `Usuarios`
-- `Proyectos`
-- `Categorias`
-- `Asignaciones`
-- `Auditoria`
-- Hojas por usuario (proyectos abiertos)
-- Hojas por proyecto cerrado (nombre sin espacios)
-
-### 6.1 Encabezados esperados
-
-#### Hojas de usuario (abiertos)
-
-`OPEN_ENTRY_HEADERS` en `Codigo.gs`:
-
-- ID
-- Tipo
-- Parent_ID
-- Descripcion
-- Fecha Inicio
-- Fecha Fin
-- Estado
-- ID_Proyecto
-- Alerta
-- Bloqueante
-- Categoria
-- Nota
-- Jira
-- MSD
-- Especificacion Tecnica
-- Especificacion Funcional
-- Evidencia
-- Sin Entregable
-- Observaciones
-- Entregable
-- Interno
-
-#### Hoja `Proyectos`
-
-- ID
-- NOMBRE
-- LIDER_EMAIL
-- ESTADO
-- FECHA_CIERRE
-- SDA
-- DURACION_SEMANAS
-
-#### Hoja `Usuarios`
-
-- CORREO
-- ROL
-
-#### Hoja `Asignaciones`
-
-- ID_PROYECTO
-- EMAIL_USUARIO
-
-## 7) Roles y acceso
-
-Roles manejados por la app:
-
-- `Lider`: acceso global, configuracion y proyectos cerrados.
-- `Colaborador`: acceso a proyectos asignados.
-
-El manifiesto actual (`appsscript.json`) esta como:
-
-- `executeAs: USER_DEPLOYING`
-- `access: ANYONE`
-
-Recomendacion para produccion:
-
-- Limitar acceso a dominio o usuarios autorizados.
-- Validar email y rol al inicio (`getAppData`).
-
-## 8) Despliegue
-
-### 8.1 Manual con clasp
-
-1. `clasp login`
-2. `clasp push -f`
-3. `clasp deploy` (nuevo) o `clasp deploy -i <DEPLOYMENT_ID>` (actualizar)
-
-### 8.2 Automatico con GitHub Actions
-
-Se ejecuta en push a `main` y realiza:
-
-1. Checkout
-2. Instalacion de `@google/clasp`
-3. Carga de `CLASPRC_JSON`
-4. `clasp push -f`
-5. `clasp deploy -i $DEPLOYMENT_ID`
-
-## 9) Consideraciones de seguridad
-
-1. No exponer IDs ni tokens en commits.
-2. Mover `SHEET_ID` desde codigo a Script Properties.
-3. Separar ambientes (dev/prod) con distintos Sheets y deployment IDs.
-4. Revisar permisos de comparticion del Sheet periodicamente.
-5. Mantener auditoria activa (`Auditoria`).
-
-## 10) Checklist de puesta en marcha
-
-- [ ] Crear/validar proyecto Apps Script.
-- [ ] Configurar `.clasp.json` con `scriptId` correcto.
-- [ ] Crear Google Sheet y registrar `SHEET_ID` en Script Properties.
-- [ ] Verificar hojas base (`Usuarios`, `Proyectos`, `Categorias`, `Asignaciones`).
-- [ ] Cargar usuario administrador con rol `Lider`.
-- [ ] Configurar secretos `CLASPRC_JSON` y `DEPLOYMENT_ID` (si aplica CI/CD).
-- [ ] Desplegar Web App y validar acceso con usuario lider y colaborador.
-
-## 11) Problemas comunes
-
-- **No tienes acceso / pantalla vacia**: validar que el correo exista en `Usuarios` y tenga rol.
-- **No aparecen proyectos**: revisar `Asignaciones` y estado del proyecto (`Abierto`/`Cerrado`).
-- **Error al guardar**: confirmar encabezados de hoja y permisos de edicion del Sheet.
-- **Fallo en deploy CI/CD**: validar formato JSON de `CLASPRC_JSON` y vigencia de `DEPLOYMENT_ID`.
-
----
-
-Si vas a productivizar, se recomienda como siguiente paso:
-
-1. Externalizar `SHEET_ID` a Script Properties.
-2. Endurecer `webapp.access`.
-3. Definir estrategia de ambientes y rotacion de secretos.
-
