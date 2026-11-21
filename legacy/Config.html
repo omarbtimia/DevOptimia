@@ -31,8 +31,6 @@
         .badge-rol { font-size: 0.7rem; padding: 3px 8px; border-radius: 12px; font-weight: 700; }
         .badge-lider { background: #fff3cd; color: #856404; }
         .badge-colab { background: #e9ecef; color: #495057; }
-        .badge-abierto { background: #d1e7dd; color: #0a3622; }
-        .badge-cerrado { background: #f8d7da; color: #842029; }
         .empty-state { text-align: center; padding: 2rem; color: #adb5bd; font-size: 0.875rem; }
 
         /* Asignaciones */
@@ -48,7 +46,10 @@
 <div class="header-app">
     <div class="container d-flex justify-content-between align-items-center">
         <span class="brand-logo">Optimia · Configuración</span>
-        <button class="btn-back" onclick="goTo('home')">← Inicio</button>
+        <div class="d-flex gap-2">
+            <button class="btn-back" onclick="goTo('home')">← Inicio</button>
+            <button class="btn-back" onclick="logout()">Logout</button>
+        </div>
     </div>
 </div>
 
@@ -68,8 +69,8 @@
                 <button class="btn btn-sm btn-danger fw-bold" onclick="abrirModal('usuario')">+ Nuevo usuario</button>
             </div>
             <table class="cfg-table">
-                <thead><tr><th>Email</th><th>Rol</th><th>Acciones</th></tr></thead>
-                <tbody id="tbl-usuarios"><tr><td colspan="3" class="empty-state">Cargando...</td></tr></tbody>
+                <thead><tr><th>Nombre</th><th>Email</th><th>Perfil</th><th>Acciones</th></tr></thead>
+                <tbody id="tbl-usuarios"><tr><td colspan="4" class="empty-state">Cargando...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -82,8 +83,8 @@
                 <button class="btn btn-sm btn-danger fw-bold" onclick="abrirModal('proyecto')">+ Nuevo proyecto</button>
             </div>
             <table class="cfg-table">
-                <thead><tr><th>Nombre</th><th>Líder</th><th>Estado</th><th>Acciones</th></tr></thead>
-                <tbody id="tbl-proyectos"><tr><td colspan="4" class="empty-state">Cargando...</td></tr></tbody>
+                <thead><tr><th>Nombre</th><th>Líder(es)</th><th>Acciones</th></tr></thead>
+                <tbody id="tbl-proyectos"><tr><td colspan="3" class="empty-state">Cargando...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -166,13 +167,19 @@
     }
 
     // ── Renders ──
+    function nombreDeEmail(email) {
+        const u = (cfgData.usuarios || []).find(x => x.email.toLowerCase() === String(email || '').toLowerCase());
+        return u?.nombre || (String(email || '').split('@')[0]) || '—';
+    }
+
     function renderUsuarios() {
         const tbody = document.getElementById('tbl-usuarios');
-        if (!cfgData.usuarios.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-state">Sin usuarios registrados</td></tr>`; return; }
+        if (!cfgData.usuarios.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Sin usuarios registrados</td></tr>`; return; }
         tbody.innerHTML = cfgData.usuarios.map(u => `
             <tr>
+                <td><strong>${u.nombre || '—'}</strong></td>
                 <td>${u.email}</td>
-                <td><span class="badge-rol ${u.rol === 'Líder' ? 'badge-lider' : 'badge-colab'}">${u.rol}</span></td>
+                <td><span class="badge-rol ${u.rol === 'Administrador' ? 'badge-lider' : 'badge-colab'}">${u.rol}</span></td>
                 <td>
                     <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="abrirModal('usuario', ${JSON.stringify(u).replace(/"/g,'&quot;')})">✏️ Editar</button>
                 </td>
@@ -181,16 +188,20 @@
 
     function renderProyectos() {
         const tbody = document.getElementById('tbl-proyectos');
-        if (!cfgData.proyectos.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Sin proyectos</td></tr>`; return; }
-        tbody.innerHTML = cfgData.proyectos.map(p => `
+        if (!cfgData.proyectos.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-state">Sin proyectos</td></tr>`; return; }
+        tbody.innerHTML = cfgData.proyectos.map(p => {
+            const lideres = cfgData.asignaciones
+                .filter(a => String(a.proyectoId) === String(p.id) && a.rol === 'Líder')
+                .map(a => nombreDeEmail(a.email));
+            return `
             <tr>
                 <td><strong>${p.nombre}</strong></td>
-                <td>${p.lider}</td>
-                <td><span class="badge-rol ${p.estado === 'Cerrado' ? 'badge-cerrado' : 'badge-abierto'}">${p.estado || 'Abierto'}</span></td>
+                <td>${lideres.length ? lideres.map(l => `<span class="badge-rol badge-lider">${l}</span>`).join(' ') : '<span class="text-muted small">Sin líder</span>'}</td>
                 <td>
                     <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="abrirModal('proyecto', ${JSON.stringify(p).replace(/"/g,'&quot;')})">✏️ Editar</button>
                 </td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
     }
 
     function renderCategorias() {
@@ -223,7 +234,11 @@
                 html += `<span class="text-muted small">Sin usuarios asignados</span>`;
             } else {
                 asigs.forEach(a => {
-                    html += `<span class="asig-tag">${a.email} <button onclick="quitarAsignacion('${a.proyectoId}','${a.email}')" title="Quitar">✕</button></span>`;
+                    const rolBadge = a.rol === 'Líder' ? 'badge-lider' : 'badge-colab';
+                    html += `<span class="asig-tag">${nombreDeEmail(a.email)}
+                        <span class="badge-rol ${rolBadge}">${a.rol}</span>
+                        <button onclick="abrirAsignar('${a.proyectoId}','${p.nombre.replace(/'/g,"\\'")}','${a.email}','${a.rol}')" title="Editar rol">✏️</button>
+                        <button onclick="quitarAsignacion('${a.proyectoId}','${a.email}')" title="Quitar">✕</button></span>`;
                 });
             }
             html += `</div></div>`;
@@ -242,24 +257,22 @@
         let body = `<input type="hidden" id="mId" value="${item?.id || ''}">`;
         if (tipo === 'usuario') {
             body += `
+                <div class="mb-3"><label class="small fw-bold">Nombre</label>
+                <input id="mNombreUsuario" class="form-control" value="${item?.nombre || ''}"></div>
                 <div class="mb-3"><label class="small fw-bold">Email</label>
                 <input id="mEmail" class="form-control" value="${item?.email || ''}" ${isEdit ? 'readonly' : ''}></div>
-                <div class="mb-2"><label class="small fw-bold">Rol</label>
+                <div class="mb-3"><label class="small fw-bold">Contraseña ${isEdit ? '(dejar vacío para conservar)' : 'inicial'}</label>
+                <input id="mPassword" type="password" class="form-control" autocomplete="new-password"></div>
+                <div class="mb-2"><label class="small fw-bold">Perfil</label>
                 <select id="mRol" class="form-select">
-                    <option value="Colaborador" ${item?.rol === 'Colaborador' ? 'selected' : ''}>Colaborador</option>
-                    <option value="Líder" ${item?.rol === 'Líder' ? 'selected' : ''}>Líder</option>
+                    <option value="Usuario" ${item?.rol === 'Usuario' ? 'selected' : ''}>Usuario</option>
+                    <option value="Administrador" ${item?.rol === 'Administrador' ? 'selected' : ''}>Administrador</option>
                 </select></div>`;
         } else if (tipo === 'proyecto') {
             body += `
                 <div class="mb-3"><label class="small fw-bold">Nombre</label>
                 <input id="mNombre" class="form-control" value="${item?.nombre || ''}" spellcheck="true"></div>
-                <div class="mb-3"><label class="small fw-bold">Email Líder</label>
-                <input id="mLider" class="form-control" value="${item?.lider || ''}"></div>
-                <div class="mb-2"><label class="small fw-bold">Estado</label>
-                <select id="mEstado" class="form-select">
-                    <option value="Abierto" ${(!item?.estado || item?.estado === 'Abierto') ? 'selected' : ''}>Abierto</option>
-                    <option value="Cerrado" ${item?.estado === 'Cerrado' ? 'selected' : ''}>Cerrado</option>
-                </select></div>`;
+                <div class="small text-muted">Asigna líderes y colaboradores en la pestaña Asignaciones.</div>`;
         } else if (tipo === 'categoria') {
             body += `
                 <div class="mb-2"><label class="small fw-bold">Nombre</label>
@@ -276,21 +289,23 @@
 
         if (currentModalType === 'asignacion') {
             const email = document.getElementById('mUserAsig').value;
+            const rolAsig = document.getElementById('mRolAsig').value;
             google.script.run
-                .withSuccessHandler(res => { modal.hide(); cfgData = res; renderAsignaciones(); showL(false); })
+                .withSuccessHandler(res => { modal.hide(); cfgData = res; renderUsuarios(); renderProyectos(); renderAsignaciones(); showL(false); })
                 .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
-                .cfgAgregarAsignacion(id, email);
+                .cfgAgregarAsignacion(id, email, rolAsig);
         } else if (currentModalType === 'usuario') {
+            const nombre = document.getElementById('mNombreUsuario').value.trim();
             const email = document.getElementById('mEmail').value.trim();
             const rol   = document.getElementById('mRol').value;
+            const password = document.getElementById('mPassword').value;
+            if (!nombre) { alert('El nombre es obligatorio'); showL(false); return; }
             if (!email) { alert('El email es obligatorio'); showL(false); return; }
-            google.script.run.withSuccessHandler(reload).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgSaveUsuario({ id, email, rol });
+            google.script.run.withSuccessHandler(reload).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgSaveUsuario({ id, email, nombre, rol, password });
         } else if (currentModalType === 'proyecto') {
             const nombre = document.getElementById('mNombre').value.trim();
-            const lider  = document.getElementById('mLider').value.trim();
-            const estado = document.getElementById('mEstado').value;
-            if (!nombre || !lider) { alert('Nombre y líder son obligatorios'); showL(false); return; }
-            google.script.run.withSuccessHandler(reload).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgSaveProyecto({ id, nombre, lider, estado });
+            if (!nombre) { alert('El nombre es obligatorio'); showL(false); return; }
+            google.script.run.withSuccessHandler(reload).withFailureHandler(err => { showL(false); alert('Error: ' + err.message); }).cfgSaveProyecto({ id, nombre });
         } else if (currentModalType === 'categoria') {
             const nombre = document.getElementById('mNombreCat').value.trim();
             if (!nombre) { alert('El nombre es obligatorio'); showL(false); return; }
@@ -299,20 +314,28 @@
     }
 
     // ── Asignaciones ──
-    function abrirAsignar(proyectoId, proyectoNombre) {
+    function abrirAsignar(proyectoId, proyectoNombre, emailActual, rolActual) {
         currentModalType = 'asignacion';
-        document.getElementById('modalTitle').innerText = `Asignar usuario · ${proyectoNombre}`;
-        document.getElementById('modalBtn').innerText = 'ASIGNAR';
-        const opts = cfgData.usuarios.map(u => `<option value="${u.email}">${u.email} (${u.rol})</option>`).join('');
+        const esEdicion = !!emailActual;
+        document.getElementById('modalTitle').innerText = `${esEdicion ? 'Editar asignación' : 'Asignar usuario'} · ${proyectoNombre}`;
+        document.getElementById('modalBtn').innerText = esEdicion ? 'GUARDAR CAMBIOS' : 'ASIGNAR';
+        const opts = cfgData.usuarios.map(u => `<option value="${u.email}" ${u.email === emailActual ? 'selected' : ''}>${u.nombre || u.email} · ${u.rol}</option>`).join('');
+        const rol = rolActual || 'Colaborador';
         document.getElementById('modalBody').innerHTML = `
             <input type="hidden" id="mId" value="${proyectoId}">
             <div class="mb-2"><label class="small fw-bold">Usuario</label>
-            <select id="mUserAsig" class="form-select">${opts}</select></div>`;
+            <select id="mUserAsig" class="form-select">${opts}</select></div>
+            <div class="mb-2"><label class="small fw-bold">Actuará como</label>
+            <select id="mRolAsig" class="form-select">
+                <option value="Colaborador" ${rol === 'Colaborador' ? 'selected' : ''}>Colaborador</option>
+                <option value="Líder" ${rol === 'Líder' ? 'selected' : ''}>Líder</option>
+            </select></div>
+            <div class="small text-muted">Un usuario puede ser líder de uno o varios proyectos y colaborador en otros.</div>`;
         modal.show();
     }
 
     function quitarAsignacion(proyectoId, email) {
-        if (!confirm(`¿Quitar a ${email} del proyecto?`)) return;
+        if (!confirm(`¿Quitar a ${nombreDeEmail(email)} del proyecto?`)) return;
         showL(true);
         google.script.run
             .withSuccessHandler(res => { cfgData = res; renderAsignaciones(); showL(false); })
@@ -322,11 +345,13 @@
 
     // ── Navegación ──
     function goTo(vista) {
-        showL(true);
-        google.script.run
-            .withSuccessHandler(html => { document.open(); document.write(html); document.close(); })
-            .withFailureHandler(err => { showL(false); alert('Error: ' + err.message); })
-            .getView(vista);
+        const rutas = { home: '/', abiertos: '/abiertos', config: '/config' };
+        document.getElementById('loading').style.display = 'flex';
+        window.location.href = rutas[vista] || '/';
+    }
+
+    function logout() {
+        fetch('/api/auth/logout', { method: 'POST' }).finally(() => { window.location.href = '/login'; });
     }
 
     function showL(s) { document.getElementById('loading').style.display = s ? 'flex' : 'none'; }

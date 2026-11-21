@@ -1,0 +1,56 @@
+:root {
+  --optimia-black: #2D2926;
+  --optimia-red: #A6192E;
+  --optimia-gray: #f8f9fa;
+}
+
+body {
+  background: var(--optimia-gray);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header-app {
+  background: var(--optimia-black);
+  border-bottom: 4px solid var(--optimia-red);
+  padding: 1rem 0;
+  color: white;
+}
+
+.brand-logo {
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.login-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.login-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  padding: 3rem 2.5rem;
+  max-width: 420px;
+  width: 100%;
+}
+
+.login-card h2 {
+  font-weight: 800;
+  font-size: 1.6rem;
+  color: var(--optimia-black);
+  margin-bottom: 0.4rem;
+}
+
+.login-card p {
+  color: #6c757d;
+  margin-bottom: 2rem;
+}
