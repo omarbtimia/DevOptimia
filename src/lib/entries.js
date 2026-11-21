@@ -1,15 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './db.js';
 import { ApiError } from './errors.js';
+import { audit } from './audit.js';
 import { emailNorm, mapEntryRow, normalizarEstado_, nowBogota, todayBogota } from './utils.js';
-
-export function audit(accion, tipo, idRegistro, detalle, user) {
-  getDb()
-    .prepare(
-      'INSERT INTO audit (timestamp, usuario, accion, tipo, id_registro, detalle) VALUES (?, ?, ?, ?, ?, ?)'
-    )
-    .run(nowBogota(), emailNorm(user?.email), accion, String(tipo || ''), String(idRegistro || ''), String(detalle || ''));
-}
 
 export function allowedCollaborators(projectId) {
   if (!projectId) return null;
