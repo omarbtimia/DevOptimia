@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { getDb } from './db.js';
 import { newToken, sha256 } from './crypto.js';
 import { ApiError } from './errors.js';
+import { audit } from './audit.js';
 
 const COOKIE_NAME = 'optimia_session';
 const MAX_AGE_SECONDS = 60 * 60 * 12;
@@ -52,7 +53,11 @@ export async function destroySession() {
   const jar = await cookies();
   const token = jar.get(COOKIE_NAME)?.value;
   if (token) {
+    const user = getDb().prepare(
+      `SELECT u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`
+    ).get(sha256(token));
     getDb().prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha256(token));
+    if (user) audit('LOGOUT', 'Sesion', user.email, 'Cierre de sesión', user);
   }
   jar.delete(COOKIE_NAME);
 }
