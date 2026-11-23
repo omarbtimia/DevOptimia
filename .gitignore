@@ -7,3 +7,4 @@ data/*.sqlite-*
 .env.production
 *.log
 .DS_Store
+.idea
