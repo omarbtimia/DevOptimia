@@ -5,7 +5,10 @@ export const metadata = {
   title: 'Optimia - Iniciar sesión',
 };
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }) {
+  const params = await searchParams;
+  const error = typeof params?.error === 'string' ? params.error : '';
+
   return (
     <>
       <div className="header-app">
@@ -16,8 +19,8 @@ export default function LoginPage() {
       <div className="login-wrapper">
         <div className="login-card">
           <h2>Bienvenido a Optimia</h2>
-          <p>Ingresa con tu usuario y contraseña</p>
-          <LoginForm />
+          <p>Ingresa con tus credenciales o con tu cuenta de Google</p>
+          <LoginForm initialError={error} />
         </div>
       </div>
     </>

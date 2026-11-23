@@ -7,9 +7,20 @@ on:
       - develop
   pull_request:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      AURORA_DSQL_HOST: ${{ secrets.AURORA_DSQL_HOST }}
+      AURORA_DSQL_REGION: ${{ secrets.AURORA_DSQL_REGION }}
+      AURORA_DSQL_READ_IAM_ROLE_ARN: ${{ secrets.AURORA_DSQL_READ_IAM_ROLE_ARN }}
+      AURORA_DSQL_CRUD_IAM_ROLE_ARN: ${{ secrets.AURORA_DSQL_CRUD_IAM_ROLE_ARN }}
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,3 +31,14 @@ jobs:
       - run: npm run db:init
       - run: npm run lint
       - run: npm run build
+
+      - name: Configurar credenciales AWS
+        if: env.AWS_ROLE_TO_ASSUME != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AURORA_DSQL_REGION }}
+
+      - name: Aplicar esquema y roles en Aurora DSQL
+        if: env.AWS_ROLE_TO_ASSUME != '' && env.AURORA_DSQL_HOST != ''
+        run: npm run db:init:aurora

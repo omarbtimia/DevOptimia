@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function LoginForm() {
+export default function LoginForm({ initialError = '' }) {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(initialError);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event) {
@@ -58,6 +58,11 @@ export default function LoginForm() {
       <button className="btn btn-danger w-100 fw-bold" type="submit" disabled={loading}>
         {loading ? 'Ingresando...' : 'INGRESAR'}
       </button>
+      <div className="login-separator"><span>o</span></div>
+      <a className="btn btn-google w-100 fw-bold" href="/api/auth/google">
+        <span className="google-g" aria-hidden="true">G</span>
+        CONTINUAR CON GOOGLE
+      </a>
     </form>
   );
 }

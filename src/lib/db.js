@@ -1,9 +1,10 @@
-import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync } from 'node:fs';
 import { hashPassword } from './crypto.js';
+import { abrirSqlite, PgAdapter } from './dbAdapter.js';
+import { getDsqlPool, usarAurora } from './dsql.js';
 
-const SCHEMA = `
+const SCHEMA_SQLITE = `
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   username      TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -86,12 +87,12 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 `;
 
-function migrarPerfiles(db) {
-  const fila = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+async function migrarPerfiles(db) {
+  const fila = await db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'");
   const sql = fila?.sql || '';
   if (!sql.includes("'Líder'") && !sql.includes("'Colaborador'")) return;
 
-  db.exec(`
+  await db.exec(`
     PRAGMA foreign_keys = OFF;
     DROP TABLE IF EXISTS users_migracion;
     BEGIN TRANSACTION;
@@ -116,24 +117,24 @@ function migrarPerfiles(db) {
   `);
 }
 
-function migrarAsignaciones(db) {
-  const columnas = db.prepare('PRAGMA table_info(assignments)').all();
+async function migrarAsignaciones(db) {
+  const columnas = await db.all('PRAGMA table_info(assignments)');
   if (!columnas.some((c) => c.name === 'rol')) {
-    db.exec("ALTER TABLE assignments ADD COLUMN rol TEXT NOT NULL DEFAULT 'Colaborador'");
+    await db.exec("ALTER TABLE assignments ADD COLUMN rol TEXT NOT NULL DEFAULT 'Colaborador'");
   }
-  db.exec(`
+  await db.exec(`
     UPDATE assignments
        SET rol = 'Líder'
      WHERE email IN (SELECT lider_email FROM projects WHERE lider_email <> '');
   `);
 }
 
-function migrarNombre(db) {
-  const columnas = db.prepare('PRAGMA table_info(users)').all();
+async function migrarNombre(db) {
+  const columnas = await db.all('PRAGMA table_info(users)');
   if (!columnas.some((c) => c.name === 'nombre')) {
-    db.exec("ALTER TABLE users ADD COLUMN nombre TEXT NOT NULL DEFAULT ''");
+    await db.exec("ALTER TABLE users ADD COLUMN nombre TEXT NOT NULL DEFAULT ''");
   }
-  db.exec(`
+  await db.exec(`
     UPDATE users
        SET nombre = CASE WHEN instr(email, '@') > 0
                          THEN substr(email, 1, instr(email, '@') - 1)
@@ -142,26 +143,50 @@ function migrarNombre(db) {
   `);
 }
 
-function seedAdmin(db) {
-  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+async function seedAdmin(db) {
+  const existing = await db.get('SELECT id FROM users WHERE username = ?', 'admin');
   if (existing) return;
-  db.prepare(
-    'INSERT INTO users (username, email, nombre, password_hash, role) VALUES (?, ?, ?, ?, ?)'
-  ).run('admin', 'admin@optimia.local', 'Administrador', hashPassword('admin'), 'Administrador');
+  await db.run(
+    'INSERT INTO users (username, email, nombre, password_hash, role) VALUES (?, ?, ?, ?, ?)',
+    'admin', 'admin@optimia.local', 'Administrador', hashPassword('admin'), 'Administrador'
+  );
+}
+
+export function rutaDb() {
+  return path.join(process.cwd(), 'data', path.basename(process.env.SQLITE_PATH || 'optimia.sqlite'));
+}
+
+async function crearDb() {
+  if (usarAurora()) return new PgAdapter(getDsqlPool('crud'));
+
+  const file = rutaDb();
+  mkdirSync(path.dirname(file), { recursive: true });
+  const db = abrirSqlite(file);
+  await db.exec(SCHEMA_SQLITE);
+  await migrarPerfiles(db);
+  await migrarNombre(db);
+  await migrarAsignaciones(db);
+  await seedAdmin(db);
+  return db;
 }
 
 export function getDb() {
-  if (globalThis.__optimiaDb) return globalThis.__optimiaDb;
+  if (!globalThis.__optimiaDbPromise) {
+    globalThis.__optimiaDbPromise = crearDb().catch((error) => {
+      delete globalThis.__optimiaDbPromise;
+      throw error;
+    });
+  }
+  return globalThis.__optimiaDbPromise;
+}
 
-  const file = path.join(process.cwd(), 'data', path.basename(process.env.SQLITE_PATH || 'optimia.sqlite'));
-  mkdirSync(path.dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
-  db.exec('PRAGMA foreign_keys = ON;');
-  db.exec(SCHEMA);
-  migrarPerfiles(db);
-  migrarNombre(db);
-  migrarAsignaciones(db);
-  seedAdmin(db);
-  globalThis.__optimiaDb = db;
+export async function getReadOnlyDb() {
+  if (usarAurora()) return new PgAdapter(getDsqlPool('read'));
+  return abrirSqlite(rutaDb(), true);
+}
+
+export async function initDb() {
+  const db = await getDb();
+  if (usarAurora()) await db.get('SELECT 1 AS ok');
   return db;
 }
