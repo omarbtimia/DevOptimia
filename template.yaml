@@ -1,56 +1,46 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Infraestructura idempotente para DevOptimia (Aurora DSQL, Roles IAM y Amplify SSR)
+Description: Infraestructura compartida para DevOptimia (1 Aurora DSQL + Permisos Bedrock + Roles Amplify para master y develop)
 
 Parameters:
-  EnvironmentSuffix:
-    Type: String
-    Default: PROD
-    AllowedValues:
-      - PROD
-      - DEV
-      - FIX
-    Description: Sufijo del entorno segun la rama
-
   ExistingAmplifyAppId:
     Type: String
     Default: ""
-    Description: ID de Amplify existente (ej. dg8weyg67c6h9). Si esta vacio, crea la app nueva.
+    Description: ID de Amplify existente (ej. dg8weyg67c6h9). Dejar vacio solo si quieres crear una app nueva.
 
   GitHubRepository:
     Type: String
     Default: https://github.com/omarbtimia/DevOptimia
-    Description: Repositorio GitHub (solo requerido si se crea una nueva app Amplify)
+    Description: URL del repositorio GitHub
 
   GitHubOAuthToken:
     Type: String
     Default: ""
     NoEcho: true
-    Description: Token PAT de GitHub (solo requerido si ExistingAmplifyAppId esta vacio)
+    Description: Token PAT de GitHub (solo necesario si ExistingAmplifyAppId esta vacio)
 
 Conditions:
-  IsProd: !Equals [!Ref EnvironmentSuffix, PROD]
   CreateAmplifyApp: !Equals [!Ref ExistingAmplifyAppId, ""]
 
 Resources:
-  # 1. Base de datos Amazon Aurora DSQL (se crea si no existe y conserva datos)
-  OptimiaDsqlCluster:
+  # 1. UNICA Base de Datos Aurora DSQL compartida entre develop y master
+  OptimiaSharedDsqlCluster:
     Type: AWS::DSQL::Cluster
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      DeletionProtectionEnabled: !If [IsProd, true, false]
+      DeletionProtectionEnabled: true
       Tags:
         - Key: Application
           Value: DevOptimia
-        - Key: Environment
-          Value: !Ref EnvironmentSuffix
+        - Key: SharedBy
+          Value: master-and-develop
 
-  # 2. Rol de Servicio para que Amplify ejecute el Build y despliegue recursos SSR
+  # 2. Rol de Servicio de Amplify (Build y despliegue de infraestructura SSR)
   AmplifyServiceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub devoptimia-amplify-service-${EnvironmentSuffix}-${AWS::Region}
+      RoleName: !Sub devoptimia-amplify-service-${AWS::Region}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -61,11 +51,11 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AdministratorAccess-Amplify
 
-  # 3. Rol de Computo SSR (permite a Next.js /api/* conectarse a Aurora DSQL por IAM)
+  # 3. Rol de Computo SSR compartido (Permisos a Aurora DSQL + Amazon Bedrock)
   AmplifyComputeRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub devoptimia-amplify-ssr-${EnvironmentSuffix}-${AWS::Region}
+      RoleName: !Sub devoptimia-amplify-ssr-compute-${AWS::Region}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -76,17 +66,35 @@ Resources:
                 - lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: !Sub devoptimia-dsql-policy-${EnvironmentSuffix}
+        - PolicyName: devoptimia-dsql-and-bedrock-access
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Sid: AllowAuroraDsqlIamAuth
+              # Permiso de conexion IAM al cluster compartido de Aurora DSQL
+              - Sid: AllowSharedAuroraDsql
                 Effect: Allow
                 Action:
                   - dsql:DbConnect
                   - dsql:DbConnectAdmin
-                Resource: !Sub "arn:aws:dsql:${AWS::Region}:${AWS::AccountId}:cluster/${OptimiaDsqlCluster}"
-              - Sid: AllowSSRLogs
+                Resource: !Sub "arn:aws:dsql:${AWS::Region}:${AWS::AccountId}:cluster/${OptimiaSharedDsqlCluster}"
+
+              # Permisos de invocacion para Amazon Bedrock (Modelos fundacionales y Cross-Region Inference Profiles)
+              - Sid: AllowBedrockModelsAndProfiles
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:Converse
+                  - bedrock:ConverseStream
+                  - bedrock:GetFoundationModel
+                  - bedrock:ListFoundationModels
+                Resource:
+                  - "arn:aws:bedrock:*::foundation-model/*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:application-inference-profile/*"
+
+              # Logs de ejecucion SSR en CloudWatch
+              - Sid: AllowSSRCloudWatchLogs
                 Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -94,40 +102,23 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  # 4. App y Rama en Amplify (solo se crean si no existe una previa)
+  # 4. App Amplify (solo se crea si no pasaste ExistingAmplifyAppId)
   AmplifyApp:
     Type: AWS::Amplify::App
     Condition: CreateAmplifyApp
     Properties:
-      Name: !Sub DevOptimia-${EnvironmentSuffix}
+      Name: DevOptimia
       Repository: !Ref GitHubRepository
       AccessToken: !Ref GitHubOAuthToken
       Platform: WEB_COMPUTE
       IAMServiceRole: !GetAtt AmplifyServiceRole.Arn
       ComputeRoleArn: !GetAtt AmplifyComputeRole.Arn
-      EnvironmentVariables:
-        - Name: DSQL_CLUSTER_ID
-          Value: !Ref OptimiaDsqlCluster
-        - Name: DSQL_ENDPOINT
-          Value: !Sub "${OptimiaDsqlCluster}.dsql.${AWS::Region}.on.aws"
-        - Name: DSQL_REGION
-          Value: !Ref AWS::Region
-
-  AmplifyBranch:
-    Type: AWS::Amplify::Branch
-    Condition: CreateAmplifyApp
-    Properties:
-      AppId: !GetAtt AmplifyApp.AppId
-      BranchName: !If [IsProd, main, develop]
-      Stage: !If [IsProd, PRODUCTION, DEVELOPMENT]
-      Framework: Next.js - SSR
-      EnableAutoBuild: true
 
 Outputs:
   DsqlClusterId:
-    Value: !Ref OptimiaDsqlCluster
+    Value: !Ref OptimiaSharedDsqlCluster
   DsqlEndpoint:
-    Value: !Sub "${OptimiaDsqlCluster}.dsql.${AWS::Region}.on.aws"
+    Value: !Sub "${OptimiaSharedDsqlCluster}.dsql.${AWS::Region}.on.aws"
   AmplifyServiceRoleArn:
     Value: !GetAtt AmplifyServiceRole.Arn
   AmplifyComputeRoleArn:
