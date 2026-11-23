@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Infraestructura idempotente para DevOptimia (Aurora DSQL, Roles IAM y Amplify SSR)
+
+Parameters:
+  EnvironmentSuffix:
+    Type: String
+    Default: PROD
+    AllowedValues:
+      - PROD
+      - DEV
+      - FIX
+    Description: Sufijo del entorno segun la rama
+
+  ExistingAmplifyAppId:
+    Type: String
+    Default: ""
+    Description: ID de Amplify existente (ej. dg8weyg67c6h9). Si esta vacio, crea la app nueva.
+
+  GitHubRepository:
+    Type: String
+    Default: https://github.com/omarbtimia/DevOptimia
+    Description: Repositorio GitHub (solo requerido si se crea una nueva app Amplify)
+
+  GitHubOAuthToken:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Token PAT de GitHub (solo requerido si ExistingAmplifyAppId esta vacio)
+
+Conditions:
+  IsProd: !Equals [!Ref EnvironmentSuffix, PROD]
+  CreateAmplifyApp: !Equals [!Ref ExistingAmplifyAppId, ""]
+
+Resources:
+  # 1. Base de datos Amazon Aurora DSQL (se crea si no existe y conserva datos)
+  OptimiaDsqlCluster:
+    Type: AWS::DSQL::Cluster
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DeletionProtectionEnabled: !If [IsProd, true, false]
+      Tags:
+        - Key: Application
+          Value: DevOptimia
+        - Key: Environment
+          Value: !Ref EnvironmentSuffix
+
+  # 2. Rol de Servicio para que Amplify ejecute el Build y despliegue recursos SSR
+  AmplifyServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub devoptimia-amplify-service-${EnvironmentSuffix}-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: amplify.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess-Amplify
+
+  # 3. Rol de Computo SSR (permite a Next.js /api/* conectarse a Aurora DSQL por IAM)
+  AmplifyComputeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub devoptimia-amplify-ssr-${EnvironmentSuffix}-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - amplify.amazonaws.com
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub devoptimia-dsql-policy-${EnvironmentSuffix}
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowAuroraDsqlIamAuth
+                Effect: Allow
+                Action:
+                  - dsql:DbConnect
+                  - dsql:DbConnectAdmin
+                Resource: !Sub "arn:aws:dsql:${AWS::Region}:${AWS::AccountId}:cluster/${OptimiaDsqlCluster}"
+              - Sid: AllowSSRLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # 4. App y Rama en Amplify (solo se crean si no existe una previa)
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Condition: CreateAmplifyApp
+    Properties:
+      Name: !Sub DevOptimia-${EnvironmentSuffix}
+      Repository: !Ref GitHubRepository
+      AccessToken: !Ref GitHubOAuthToken
+      Platform: WEB_COMPUTE
+      IAMServiceRole: !GetAtt AmplifyServiceRole.Arn
+      ComputeRoleArn: !GetAtt AmplifyComputeRole.Arn
+      EnvironmentVariables:
+        - Name: DSQL_CLUSTER_ID
+          Value: !Ref OptimiaDsqlCluster
+        - Name: DSQL_ENDPOINT
+          Value: !Sub "${OptimiaDsqlCluster}.dsql.${AWS::Region}.on.aws"
+        - Name: DSQL_REGION
+          Value: !Ref AWS::Region
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    Condition: CreateAmplifyApp
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: !If [IsProd, main, develop]
+      Stage: !If [IsProd, PRODUCTION, DEVELOPMENT]
+      Framework: Next.js - SSR
+      EnableAutoBuild: true
+
+Outputs:
+  DsqlClusterId:
+    Value: !Ref OptimiaDsqlCluster
+  DsqlEndpoint:
+    Value: !Sub "${OptimiaDsqlCluster}.dsql.${AWS::Region}.on.aws"
+  AmplifyServiceRoleArn:
+    Value: !GetAtt AmplifyServiceRole.Arn
+  AmplifyComputeRoleArn:
+    Value: !GetAtt AmplifyComputeRole.Arn
+  AmplifyAppIdOutput:
+    Value: !If [CreateAmplifyApp, !GetAtt AmplifyApp.AppId, !Ref ExistingAmplifyAppId]
