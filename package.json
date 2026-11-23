@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "db:init": "node scripts/init-db.mjs",
+    "env:check": "node scripts/check-env.mjs",
     "ui:sync": "node scripts/split-legacy.mjs"
   },
   "dependencies": {
