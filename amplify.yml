@@ -1,13 +1,14 @@
 version: 1
-
 frontend:
   phases:
     preBuild:
       commands:
+        - nvm install 20
+        - nvm use 20
         - npm ci
     build:
       commands:
-        - env | grep -E '^(DB_DRIVER|AURORA_DSQL_|AWS_BEARER_TOKEN_BEDROCK|GOOGLE_)=' >> .env.production
+        - env | grep -E '^(DSQL_|DB_|AURORA_|AUTH_|GOOGLE_|APP_|NEXT_PUBLIC_)' >> .env.production || true
         - npm run build
   artifacts:
     baseDirectory: .next
@@ -15,5 +16,5 @@ frontend:
       - '**/*'
   cache:
     paths:
-      - .next/cache/**/*
       - node_modules/**/*
+      - .next/cache/**/*

@@ -1,0 +1,115 @@
+name: Provision Infra & DB for DevOptimia
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - fixed
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Build SAM template
+        run: sam build --template template.yaml
+
+      - name: Deploy Infrastructure Stack (Create or Update)
+        id: sam_deploy
+        run: |
+          if [ "${{ github.ref_name }}" == "main" ]; then
+            SUFFIX="PROD"
+            STACK_NAME="devoptimia"
+          elif [ "${{ github.ref_name }}" == "develop" ]; then
+            SUFFIX="DEV"
+            STACK_NAME="devoptimia-DEV"
+          else
+            SUFFIX="FIX"
+            STACK_NAME="devoptimia-FIX"
+          fi
+
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name "$STACK_NAME" \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region "${{ secrets.AWS_REGION }}" \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --resolve-s3 \
+            --parameter-overrides \
+              EnvironmentSuffix="$SUFFIX" \
+              ExistingAmplifyAppId="${{ secrets.AMPLIFY_APP_ID }}"
+
+          echo "stack_name=$STACK_NAME" >> $GITHUB_OUTPUT
+
+      - name: Read CloudFormation Outputs
+        id: cf_outputs
+        run: |
+          STACK="${{ steps.sam_deploy.outputs.stack_name }}"
+          DSQL_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='DsqlEndpoint'].OutputValue" --output text)
+          SERVICE_ROLE=$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='AmplifyServiceRoleArn'].OutputValue" --output text)
+          COMPUTE_ROLE=$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='AmplifyComputeRoleArn'].OutputValue" --output text)
+          APP_ID=$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='AmplifyAppIdOutput'].OutputValue" --output text)
+
+          echo "dsql_endpoint=$DSQL_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "service_role=$SERVICE_ROLE" >> $GITHUB_OUTPUT
+          echo "compute_role=$COMPUTE_ROLE" >> $GITHUB_OUTPUT
+          echo "app_id=$APP_ID" >> $GITHUB_OUTPUT
+
+      - name: Sync Roles and DB Env Vars to Amplify Branch
+        if: steps.cf_outputs.outputs.app_id != ''
+        run: |
+          aws amplify update-app \
+            --app-id "${{ steps.cf_outputs.outputs.app_id }}" \
+            --platform WEB_COMPUTE \
+            --iam-service-role-arn "${{ steps.cf_outputs.outputs.service_role }}" \
+            --compute-role-arn "${{ steps.cf_outputs.outputs.compute_role }}"
+
+          # Crea la rama en Amplify si aun no existe
+          aws amplify get-branch \
+            --app-id "${{ steps.cf_outputs.outputs.app_id }}" \
+            --branch-name "${{ github.ref_name }}" >/dev/null 2>&1 || \
+          aws amplify create-branch \
+            --app-id "${{ steps.cf_outputs.outputs.app_id }}" \
+            --branch-name "${{ github.ref_name }}" \
+            --framework "Next.js - SSR" \
+            --enable-auto-build
+
+          # Inyecta las variables de base de datos y autenticacion en esa rama
+          aws amplify update-branch \
+            --app-id "${{ steps.cf_outputs.outputs.app_id }}" \
+            --branch-name "${{ github.ref_name }}" \
+            --environment-variables \
+              DSQL_ENDPOINT="${{ steps.cf_outputs.outputs.dsql_endpoint }}" \
+              DSQL_REGION="${{ secrets.AWS_REGION }}" \
+              AUTH_SECRET="${{ secrets.AUTH_SECRET }}" \
+              GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
+              GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}"
+
+      - name: Initialize Aurora DSQL Schema (if tables do not exist)
+        env:
+          DSQL_ENDPOINT: ${{ steps.cf_outputs.outputs.dsql_endpoint }}
+          DSQL_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          npm ci
+          node scripts/init-aurora.mjs
