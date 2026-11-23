@@ -34,6 +34,20 @@ Copia `.env.example` a `.env.local`:
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Credenciales OAuth 2.0 de una aplicación web en Google Cloud. Habilitan el registro e inicio de sesión con cualquier cuenta de Google. |
 | `GOOGLE_REDIRECT_URI` | Callback autorizado en Google. Local: `http://localhost:3000/api/auth/google/callback`; producción: `https://<dominio>/api/auth/google/callback`. |
 
+Para usar **Continuar con Google** en local, completa `.env.local`:
+
+```text
+GOOGLE_CLIENT_ID=tu-client-id
+GOOGLE_CLIENT_SECRET=tu-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+```
+
+Luego ejecuta `npm run env:check`. El comando muestra solo el nombre y el estado de cada variable (`[OK]`, `[FALTA]` u `[OPCIONAL]`); nunca imprime los valores.
+
+### Validación en GitHub Actions
+
+El workflow expone `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` y `AWS_BEARER_TOKEN_BEDROCK` al job y ejecuta `npm run env:check`. Configura los tres primeros como **Secrets o Variables** del repositorio; si falta alguno, el job falla con un mensaje como `[FALTA] GOOGLE_CLIENT_SECRET`, sin mostrar valores. En pull requests desde forks la validación se omite porque GitHub no entrega secrets.
+
 ### Despliegue en AWS Amplify
 
 El archivo `amplify.yml` copia durante el build las variables privadas de servidor a `.env.production`, como requiere el hosting SSR de Next.js. Configura en **Amplify → App settings → Environment variables**, por cada rama:
@@ -58,6 +72,7 @@ Para Google, crea un cliente **OAuth 2.0 → Aplicación web** en Google Cloud y
 | `npm run build` / `npm start` | Build y servidor de producción. |
 | `npm run lint` | ESLint. |
 | `npm run db:init` | Crea/verifica esquema y usuario admin. |
+| `npm run env:check` | Valida variables obligatorias mostrando solo nombres y estado. |
 | `npm run ui:sync` | Regenera `src/generated/*` desde `legacy/*.html`. |
 
 ## Estructura
@@ -65,7 +80,7 @@ Para Google, crea un cliente **OAuth 2.0 → Aplicación web** en Google Cloud y
 - `legacy/Home.html`, `legacy/Index.html`, `legacy/Config.html`: **fuente visual** de las tres pantallas (idénticas a las originales salvo navegación, quita de cerrados y campo de contraseña).
 - `src/generated/*.css|markup.js|client.js`: copias generadas que consume Next. **No editar a mano**; editar `legacy/` y correr `npm run ui:sync`.
 - `src/app/(app)/`: rutas protegidas `/` (Home), `/abiertos` (Index), `/config` (solo `Administrador`).
-- `src/app/login/`: login con usuario/contraseña.
+- `src/app/login/`: login con usuario/contraseña y Google.
 - `src/app/api/auth/*`: login/logout (cookie `optimia_session`, httpOnly, 12 h).
 - `src/app/api/rpc/`: único endpoint backend. Recibe `{ method, params }` y despacha a `src/lib/rpc.js`, manteniendo los nombres de las funciones de Apps Script (`getAppData`, `cfgGetAll`, `fetchEntries`, `saveOrUpdateEntry`, …).
 - `src/components/rpcShim.js`: compatibilidad con `google.script.run.withSuccessHandler(...).withFailureHandler(...).metodo(...)` para que el JS legado funcione sin cambios.

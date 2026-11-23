@@ -8,10 +8,8 @@ frontend:
         - npm ci
     build:
       commands:
-        # 1. Pasa todas las variables de Amplify al runtime SSR (.env.production)
-        # Excluye variables internas de AWS/sistema para no romper el contenedor Lambda/SSR
-        - env | grep -v -E '^(AWS_|_|HOME=|PATH=|PWD=|SHLVL=|USER=|NODE_|NVM_|AMPLIFY_)' > .env.production
-        # 2. Compila la aplicacion Next.js
+        - env | grep -E '^(SQLITE_PATH|AWS_BEARER_TOKEN_BEDROCK|GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI)=' > .env.production
+        - npm run env:check
         - npm run build
   artifacts:
     baseDirectory: .next

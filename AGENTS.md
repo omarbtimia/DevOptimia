@@ -4,7 +4,7 @@
 Next.js 16 (App Router) web app with a Node backend and local SQLite (`node:sqlite`). Google Sheets/Apps Script/`clasp` were removed; closed projects were removed entirely. Node >= 22.5 required. No test framework; verification is `npm run lint` + `npm run build` plus manual checks.
 
 ## Commands
-`npm run dev`, `npm run build`, `npm start`, `npm run lint`, `npm run db:init` (creates `data/optimia.sqlite` and seeds `admin`/`admin`), `npm run ui:sync`.
+`npm run dev`, `npm run build`, `npm start`, `npm run lint`, `npm run db:init` (creates `data/optimia.sqlite` and seeds `admin`/`admin`), `npm run env:check` (reports required env var names/status only, never values), `npm run ui:sync`.
 
 ## UI source of truth
 - `legacy/Home.html`, `legacy/Index.html`, `legacy/Config.html` are the visual source. `src/generated/{home,index,config}.{css,markup.js,client.js}` are generated copies rendered by `src/components/LegacyPage.jsx`. **Do not edit generated files**; edit `legacy/` then run `npm run ui:sync`.
@@ -14,6 +14,7 @@ Next.js 16 (App Router) web app with a Node backend and local SQLite (`node:sqli
 ## Routing / auth
 - `/login` is public. `(app)/layout.js` redirects unauthenticated users to it; `/config` additionally requires global profile `Administrador` (exact string).
 - Login accepts `username` or `email`; passwords are scrypt-hashed (`src/lib/crypto.js`), sessions are DB-backed with an httpOnly cookie. Seed user: `admin` / `admin` (landing email `admin@optimia.local`).
+- Google OAuth uses `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` from server env only; CI/Amplify validate presence with `npm run env:check` without printing values.
 - `src/components/rpcShim.js` maps legacy `google.script.run.withSuccessHandler(...).withFailureHandler(...).method(args)` to `POST /api/rpc` with `{ method, params }`. Add/change backend methods in `src/lib/rpc.js` → `HANDLERS` using the old Apps Script names (`getAppData`, `cfgGetAll`, `fetchEntries`, `saveOrUpdateEntry`, …).
 - Global profiles are exactly `Administrador` and `Usuario`. `Administrador` only unlocks config; it does **not** grant automatic leader powers in `/abiertos`.
 - `assignments.rol` is exactly `Líder` or `Colaborador` **per project**. A user may lead several projects and collaborate in others; a project may have several leaders.

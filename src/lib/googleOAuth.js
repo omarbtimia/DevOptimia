@@ -7,8 +7,11 @@ const USER_INFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 function config() {
   const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
   const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
-  if (!clientId || !clientSecret) {
-    throw new Error('El acceso con Google no está configurado.');
+  const faltan = [];
+  if (!clientId) faltan.push('GOOGLE_CLIENT_ID');
+  if (!clientSecret) faltan.push('GOOGLE_CLIENT_SECRET');
+  if (faltan.length) {
+    throw new Error(`Faltan variables de Google: ${faltan.join(', ')}. Configúralas en .env.local y reinicia el servidor.`);
   }
   return { clientId, clientSecret };
 }
