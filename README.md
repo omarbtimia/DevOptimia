@@ -38,6 +38,8 @@ Copia `.env.example` a `.env.local`:
 | `AURORA_DSQL_TOKEN_EXPIRES_IN` / `AURORA_DSQL_TOKEN_TTL` | Vigencia y renovación del token IAM en segundos (900 / 780 por defecto). |
 | `AURORA_DSQL_READ_IAM_ROLE_ARN` / `AURORA_DSQL_CRUD_IAM_ROLE_ARN` | ARNs IAM mapeados por `npm run db:init:aurora`. No son necesarios para arrancar la app. |
 | `AWS_BEARER_TOKEN_BEDROCK` | Token bearer para el chat "Morgan" (solo para quien esté asignado como `Líder` en el proyecto activo). Sin él, el chat devuelve un error controlado. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Credenciales OAuth 2.0 de una aplicación web en Google Cloud. Habilitan el registro e inicio de sesión con cualquier cuenta de Google. |
+| `GOOGLE_REDIRECT_URI` | Callback autorizado en Google. Local: `http://localhost:3000/api/auth/google/callback`; producción: `https://<dominio>/api/auth/google/callback`. |
 
 Las credenciales AWS se toman de la cadena estándar (variables de entorno, perfil local o rol IAM). Nunca se guardan passwords de base de datos: DSQL usa tokens IAM de corta vida firmados con `@aws-sdk/dsql-signer`.
 
@@ -52,11 +54,16 @@ AURORA_DSQL_REGION=us-east-1
 AURORA_DSQL_CRUD_USER=optimia_crud
 AURORA_DSQL_READ_USER=optimia_read
 AWS_BEARER_TOKEN_BEDROCK=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=https://<dominio>/api/auth/google/callback
 ```
 
 Asigna además un **Compute role** a la aplicación Amplify con permisos de conexión a Aurora DSQL. La app utiliza ese rol para generar tokens IAM temporales; no necesita una contraseña de base de datos. Ninguna de estas variables debe usar el prefijo `NEXT_PUBLIC_`, porque ese prefijo expone el valor al navegador.
 
 Los secretos de GitHub Actions son independientes. `AWS_ROLE_TO_ASSUME` y los valores utilizados por `npm run db:init:aurora` se configuran en **GitHub → Settings → Secrets and variables → Actions**. El workflow usa OIDC para asumir el rol y omite la inicialización de Aurora cuando esos secretos no están disponibles, como sucede en pull requests desde forks.
+
+Para Google, crea un cliente **OAuth 2.0 → Aplicación web** en Google Cloud y registra exactamente la URI de producción indicada en `GOOGLE_REDIRECT_URI`. Los usuarios nuevos se crean con nombre y correo verificados por Google, perfil global `Usuario`, sin asignaciones de proyecto y sin contraseña conocida. Si el correo ya existe y está activo, Google inicia sesión en esa misma cuenta.
 
 ## Comandos
 

@@ -6,6 +6,7 @@ import { audit } from './audit.js';
 
 const COOKIE_NAME = 'optimia_session';
 const MAX_AGE_SECONDS = 60 * 60 * 12;
+export const GOOGLE_OAUTH_STATE_COOKIE = 'optimia_google_oauth_state';
 
 function sqlNow(offsetMs = 0) {
   return new Date(Date.now() + offsetMs).toISOString().replace('T', ' ').slice(0, 19);
@@ -52,6 +53,24 @@ export async function createSession(userId) {
     path: '/',
     maxAge: MAX_AGE_SECONDS,
   });
+}
+
+export async function setGoogleOAuthState(state) {
+  const jar = await cookies();
+  jar.set(GOOGLE_OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 60 * 10,
+  });
+}
+
+export async function consumeGoogleOAuthState() {
+  const jar = await cookies();
+  const state = jar.get(GOOGLE_OAUTH_STATE_COOKIE)?.value || '';
+  jar.delete(GOOGLE_OAUTH_STATE_COOKIE);
+  return state;
 }
 
 export async function destroySession() {
