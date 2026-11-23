@@ -1,4 +1,5 @@
-import { getDb } from '../src/lib/db.js';
+import { initDb } from '../src/lib/db.js';
+import { usarAurora } from '../src/lib/dsql.js';
 
-getDb();
-console.log('Base de datos SQLite lista.');
+await initDb();
+console.log(usarAurora() ? 'Conexión Aurora DSQL verificada.' : 'Base de datos SQLite lista.');

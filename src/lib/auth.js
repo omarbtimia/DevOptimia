@@ -16,12 +16,14 @@ export async function getSessionUser() {
   const token = jar.get(COOKIE_NAME)?.value;
   if (!token) return null;
 
-  const row = getDb().prepare(
+  const db = await getDb();
+  const row = await db.get(
     `SELECT u.id, u.username, u.email, u.role
        FROM sessions s
        JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.expires_at > ? AND u.activo = 1`
-  ).get(sha256(token), sqlNow());
+      WHERE s.token_hash = ? AND s.expires_at > ? AND u.activo = 1`,
+    sha256(token), sqlNow()
+  );
   return row || null;
 }
 
@@ -37,8 +39,11 @@ export function requireAdmin(user) {
 
 export async function createSession(userId) {
   const token = newToken();
-  getDb().prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
-    .run(sha256(token), userId, sqlNow(MAX_AGE_SECONDS * 1000));
+  const db = await getDb();
+  await db.run(
+    'INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)',
+    sha256(token), userId, sqlNow(MAX_AGE_SECONDS * 1000)
+  );
   const jar = await cookies();
   jar.set(COOKIE_NAME, token, {
     httpOnly: true,
@@ -53,11 +58,13 @@ export async function destroySession() {
   const jar = await cookies();
   const token = jar.get(COOKIE_NAME)?.value;
   if (token) {
-    const user = getDb().prepare(
-      `SELECT u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`
-    ).get(sha256(token));
-    getDb().prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha256(token));
-    if (user) audit('LOGOUT', 'Sesion', user.email, 'Cierre de sesión', user);
+    const db = await getDb();
+    const user = await db.get(
+      'SELECT u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?',
+      sha256(token)
+    );
+    await db.run('DELETE FROM sessions WHERE token_hash = ?', sha256(token));
+    if (user) await audit('LOGOUT', 'Sesion', user.email, 'Cierre de sesión', user);
   }
   jar.delete(COOKIE_NAME);
 }

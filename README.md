@@ -1,6 +1,6 @@
-# Optimia (Next.js + SQLite)
+# Optimia (Next.js + SQLite / Aurora DSQL)
 
-Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con backend propio y SQLite. El comportamiento y la interfaz de **proyectos abiertos, configuración y chat de líderes de proyecto** se conservan; **proyectos cerrados fueron eliminados** por completo.
+Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con backend propio. Localmente usa SQLite; en producción puede usar Aurora DSQL con dos roles: `optimia_crud` para la app y `optimia_read` solo para el SQL de Morgan. El comportamiento y la interfaz de **proyectos abiertos, configuración y chat de líderes de proyecto** se conservan; **proyectos cerrados fueron eliminados** por completo.
 
 ## Requisitos y arranque
 
@@ -29,8 +29,17 @@ Copia `.env.example` a `.env.local`:
 
 | Variable | Uso |
 | --- | --- |
+| `DB_DRIVER` | `sqlite` (local, por defecto) o `aurora`/`dsql`. Si está vacío, Aurora se activa automáticamente cuando existe `AURORA_DSQL_HOST`. |
 | `SQLITE_PATH` | Nombre del archivo dentro de `./data` (por defecto `optimia.sqlite`). |
+| `AURORA_DSQL_HOST` | Endpoint del cluster DSQL, sin `https://`. Ejemplo: `xxx.dsql.us-east-1.on.aws`. |
+| `AURORA_DSQL_REGION` | Región AWS del cluster. Se infiere del host si falta. |
+| `AURORA_DSQL_DATABASE` / `AURORA_DSQL_PORT` | Base y puerto (por defecto `postgres` / `5432`). |
+| `AURORA_DSQL_CRUD_USER` / `AURORA_DSQL_READ_USER` | Roles DB usados por la app y por Morgan (por defecto `optimia_crud` / `optimia_read`). |
+| `AURORA_DSQL_TOKEN_EXPIRES_IN` / `AURORA_DSQL_TOKEN_TTL` | Vigencia y renovación del token IAM en segundos (900 / 780 por defecto). |
+| `AURORA_DSQL_READ_IAM_ROLE_ARN` / `AURORA_DSQL_CRUD_IAM_ROLE_ARN` | ARNs IAM mapeados por `npm run db:init:aurora`. No son necesarios para arrancar la app. |
 | `AWS_BEARER_TOKEN_BEDROCK` | Token bearer para el chat "Morgan" (solo para quien esté asignado como `Líder` en el proyecto activo). Sin él, el chat devuelve un error controlado. |
+
+Las credenciales AWS se toman de la cadena estándar (variables de entorno, perfil local o rol IAM). Nunca se guardan passwords de base de datos: DSQL usa tokens IAM de corta vida firmados con `@aws-sdk/dsql-signer`.
 
 ## Comandos
 
@@ -39,7 +48,8 @@ Copia `.env.example` a `.env.local`:
 | `npm run dev` | Servidor de desarrollo. |
 | `npm run build` / `npm start` | Build y servidor de producción. |
 | `npm run lint` | ESLint. |
-| `npm run db:init` | Crea/verifica esquema y usuario admin. |
+| `npm run db:init` | Crea/verifica esquema SQLite o comprueba la conexión Aurora con el rol CRUD. |
+| `npm run db:init:aurora` | Aplica `db/aurora-schema.sql`, siembra admin, crea/mapear roles y otorga permisos en Aurora DSQL (requiere identidad con `dsql:DbConnectAdmin`). |
 | `npm run ui:sync` | Regenera `src/generated/*` desde `legacy/*.html`. |
 
 ## Estructura
@@ -51,11 +61,20 @@ Copia `.env.example` a `.env.local`:
 - `src/app/api/auth/*`: login/logout (cookie `optimia_session`, httpOnly, 12 h).
 - `src/app/api/rpc/`: único endpoint backend. Recibe `{ method, params }` y despacha a `src/lib/rpc.js`, manteniendo los nombres de las funciones de Apps Script (`getAppData`, `cfgGetAll`, `fetchEntries`, `saveOrUpdateEntry`, …).
 - `src/components/rpcShim.js`: compatibilidad con `google.script.run.withSuccessHandler(...).withFailureHandler(...).metodo(...)` para que el JS legado funcione sin cambios.
-- `src/lib/`: SQLite, auth, entradas, permisos, chat Bedrock y helpers.
+- `src/lib/`: capa DB dual (`db.js`, `dbAdapter.js`, `dsql.js`), auth, entradas, permisos, chat Bedrock y helpers.
+- `db/aurora-schema.sql`: DDL de Aurora DSQL; `scripts/init-aurora.mjs` lo aplica y crea los roles.
 
 ## Base de datos
 
-Archivo: `data/optimia.sqlite` (ignorado por git). Zona horaria de la app: `America/Bogota`.
+Archivo local: `data/optimia.sqlite` (ignorado por git). Zona horaria de la app: `America/Bogota`.
+
+### Modos de ejecución
+
+- **Local por defecto:** sin `AURORA_DSQL_HOST` (o con `DB_DRIVER=sqlite`), toda la app usa SQLite. No se requiere AWS.
+- **Producción con Aurora:** con `DB_DRIVER=aurora` y las variables DSQL, la app usa el rol `optimia_crud` para todas las operaciones y `optimia_read` únicamente para ejecutar el SQL generado por Morgan. El esquema y los roles se crean en CI con `npm run db:init:aurora`.
+- `optimia_read` solo tiene `SELECT` sobre `projects`, `categories`, `assignments` y `entries`; no puede leer `users`, `sessions`, `audit` ni ejecutar DDL/DML.
+- `optimia_crud` tiene `SELECT/INSERT/UPDATE/DELETE` y es el único rol usado por mutations, login, sesiones y auditoría.
+- Los tokens IAM se cachean por menos de su vigencia y se renuevan automáticamente por `pg` en cada conexión nueva.
 
 ### Tablas
 
@@ -169,7 +188,7 @@ Toda mutación de la app (configuración, entradas, notas, atrasos, login/logout
 - Todos los usuarios (incluido `Administrador`) ven en proyectos abiertos solo los proyectos donde tienen una asignación.
 - La asignación indica si el usuario actúa como `Líder` o `Colaborador` en ese proyecto. Un usuario puede ser líder de uno o varios proyectos y colaborador en otros; un proyecto puede tener varios líderes.
 - Editar registros ajenos, usar `VISTA GLOBAL` y consultar Morgan exigen rol `Líder` **en el proyecto activo** (no basta con el perfil `Administrador`).
-- El chat de Morgan usa el contexto completo del proyecto (sin fecha de corte).
+- El chat de Morgan usa un gobierno SQL (`src/lib/sqlGovernance.js`): recibe solo las tablas permitidas del proyecto, devuelve un `SELECT` con `:projectId`/`:hoy`, ese SQL se ejecuta en una conexión de solo lectura y sus filas se devuelven al modelo para redactar la respuesta. Nunca se envían estructuras de acceso, credenciales, perfiles globales ni bitácoras.
 
 ## Verificación
 
