@@ -27,6 +27,16 @@ export function getPublicOrigin(request) {
   if (host && !host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
     return `${proto}://${host}`;
   }
+
+  const configured = String(process.env.GOOGLE_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin;
+    } catch {
+      throw new Error('GOOGLE_REDIRECT_URI no es una URL válida.');
+    }
+  }
+
   return new URL(request.url).origin;
 }
 

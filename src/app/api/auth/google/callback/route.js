@@ -3,12 +3,12 @@ import { getDb } from '@/lib/db';
 import { audit } from '@/lib/audit';
 import { consumeGoogleOAuthState, createSession } from '@/lib/auth';
 import { hashPassword, newToken } from '@/lib/crypto';
-import { getGoogleUser } from '@/lib/googleOAuth';
+import { getGoogleUser, getPublicOrigin } from '@/lib/googleOAuth';
 
 export const runtime = 'nodejs';
 
 function loginRedirect(request, error = '') {
-  const url = new URL(error ? '/login' : '/', request.url);
+  const url = new URL(error ? '/login' : '/', getPublicOrigin(request));
   if (error) url.searchParams.set('error', error);
   return NextResponse.redirect(url);
 }
@@ -28,30 +28,31 @@ export async function GET(request) {
 
     const googleUser = await getGoogleUser(request, code);
     auditIdentity = googleUser.email;
-    const db = getDb();
-    let user = db.prepare(
-      'SELECT id, email, nombre, role, activo FROM users WHERE email = ?'
-    ).get(googleUser.email);
+    const db = await getDb();
+    let user = await db.get(
+      'SELECT id, email, nombre, role, activo FROM users WHERE email = ?',
+      googleUser.email
+    );
 
     if (user && Number(user.activo) !== 1) {
       throw new Error('El usuario está inactivo. Contacta a un administrador.');
     }
 
     if (!user) {
-      db.prepare(
+      await db.run(
         `INSERT INTO users (username, email, nombre, password_hash, role)
-         VALUES (?, ?, ?, ?, ?)`
-      ).run(
+         VALUES (?, ?, ?, ?, ?)`,
         googleUser.email,
         googleUser.email,
         googleUser.nombre,
         hashPassword(newToken()),
         'Usuario'
       );
-      user = db.prepare(
-        'SELECT id, email, nombre, role, activo FROM users WHERE email = ?'
-      ).get(googleUser.email);
-      audit(
+      user = await db.get(
+        'SELECT id, email, nombre, role, activo FROM users WHERE email = ?',
+        googleUser.email
+      );
+      await audit(
         'CREAR',
         'Usuario',
         user.email,
@@ -61,10 +62,10 @@ export async function GET(request) {
     }
 
     await createSession(user.id);
-    audit('LOGIN', 'Sesion', user.email, 'Inicio de sesión con Google', user);
+    await audit('LOGIN', 'Sesion', user.email, 'Inicio de sesión con Google', user);
     return loginRedirect(request);
   } catch (error) {
-    audit(
+    await audit(
       'LOGIN_FALLIDO',
       'Sesion',
       auditIdentity,
