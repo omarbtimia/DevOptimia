@@ -39,6 +39,6 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AURORA_DSQL_REGION }}
 
-      - name: Aplicar esquema y roles en Aurora DSQL
+      - name: Aplicar esquema y roles en Aurora DSQL test
         if: env.AWS_ROLE_TO_ASSUME != '' && env.AURORA_DSQL_HOST != ''
         run: npm run db:init:aurora
