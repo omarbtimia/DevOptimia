@@ -154,8 +154,22 @@ function rutaDb() {
   return path.join(process.cwd(), 'data', path.basename(process.env.SQLITE_PATH || 'optimia.sqlite'));
 }
 
+function adaptarSqlite(db) {
+  return Object.assign(db, {
+    get(sql, ...params) {
+      return db.prepare(sql).get(...params);
+    },
+    all(sql, ...params) {
+      return db.prepare(sql).all(...params);
+    },
+    run(sql, ...params) {
+      return db.prepare(sql).run(...params);
+    },
+  });
+}
+
 export function getDb() {
-  if (globalThis.__optimiaDb) return globalThis.__optimiaDb;
+  if (globalThis.__optimiaDb) return adaptarSqlite(globalThis.__optimiaDb);
 
   const file = rutaDb();
   mkdirSync(path.dirname(file), { recursive: true });
@@ -166,10 +180,10 @@ export function getDb() {
   migrarNombre(db);
   migrarAsignaciones(db);
   seedAdmin(db);
-  globalThis.__optimiaDb = db;
-  return db;
+  globalThis.__optimiaDb = adaptarSqlite(db);
+  return globalThis.__optimiaDb;
 }
 
 export function getReadOnlyDb() {
-  return new DatabaseSync(rutaDb(), { readOnly: true });
+  return adaptarSqlite(new DatabaseSync(rutaDb(), { readOnly: true }));
 }
