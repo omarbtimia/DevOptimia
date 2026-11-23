@@ -83,6 +83,6 @@ if (faltan.length) {
   console.log(`\nFaltan ${faltan.length} variable(s) obligatoria(s): ${faltan.join(', ')}`);
   console.log('Configúralas en .env.local, en Amplify o en GitHub Actions Secrets/Variables.');
   process.exitCode = 1;
+} else {
+  console.log('\nTodas las variables obligatorias están informadas.');
 }
-
-console.log('\nTodas las variables obligatorias están informadas.');
