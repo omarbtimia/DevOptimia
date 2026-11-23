@@ -13,9 +13,23 @@ function config() {
   return { clientId, clientSecret };
 }
 
+export function getPublicOrigin(request) {
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = (forwardedHost || request.headers.get('host') || '')
+    .split(',')[0]
+    .trim();
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const proto = (forwardedProto || 'https').split(',')[0].trim();
+
+  if (host && !host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+    return `${proto}://${host}`;
+  }
+  return new URL(request.url).origin;
+}
+
 export function googleRedirectUri(request) {
   const configured = String(process.env.GOOGLE_REDIRECT_URI || '').trim();
-  return configured || new URL('/api/auth/google/callback', request.url).toString();
+  return configured || new URL('/api/auth/google/callback', getPublicOrigin(request)).toString();
 }
 
 export function googleAuthorizationUrl(request, state) {
