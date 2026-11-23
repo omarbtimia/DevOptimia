@@ -11,9 +11,7 @@ frontend:
         # 1. Pasa todas las variables de Amplify al runtime SSR (.env.production)
         # Excluye variables internas de AWS/sistema para no romper el contenedor Lambda/SSR
         - env | grep -v -E '^(AWS_|_|HOME=|PATH=|PWD=|SHLVL=|USER=|NODE_|NVM_|AMPLIFY_)' > .env.production
-        # 2. Inicializa las tablas en Aurora DSQL si aun no existen (usa la misma BD en ambas ramas)
-        - node scripts/init-aurora.mjs
-        # 3. Compila la aplicacion Next.js
+        # 2. Compila la aplicacion Next.js
         - npm run build
   artifacts:
     baseDirectory: .next

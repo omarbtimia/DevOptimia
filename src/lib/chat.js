@@ -12,23 +12,22 @@ const REGION = 'us-east-1';
 const MODEL = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
 const FALLBACK_MODEL = 'us.anthropic.claude-3-5-haiku-20241022-v1:0';
 
-async function construirDirectorio(projectId) {
-  const db = await getDb();
-  const filas = await db.all(
-    `SELECT a.email, COALESCE(NULLIF(TRIM(u.nombre), ''), '') AS nombre
+function construirDirectorio(projectId) {
+  const filas = getDb().prepare(
+    `SELECT a.email,
+            COALESCE(
+              NULLIF(TRIM(u.nombre), ''),
+              CASE WHEN instr(a.email, '@') > 0 THEN substr(a.email, 1, instr(a.email, '@') - 1) ELSE a.email END
+            ) AS nombre
        FROM assignments a
        LEFT JOIN users u ON u.email = a.email
       WHERE a.proyecto_id = ?
-      ORDER BY nombre, a.email`,
-    String(projectId)
-  );
+      ORDER BY nombre, a.email`
+  ).all(String(projectId));
 
-  const directorio = filas.map((f) => {
-    const correo = String(f.email || '');
-    const nombre = String(f.nombre || '').trim() || correo.split('@')[0] || correo;
-    return `${correo} -> ${nombre}`;
-  });
-  return directorio.length ? directorio.join('\n') : 'No hay colaboradores asignados.';
+  return filas.length
+    ? filas.map((f) => `${f.email} -> ${f.nombre}`).join('\n')
+    : 'No hay colaboradores asignados.';
 }
 
 function invocarEndpoint(modelId, apiKey, requestBody) {
@@ -59,15 +58,15 @@ async function invocarModelo(apiKey, system, texto, maxTokens) {
   return String(respuesta);
 }
 
-async function ejecutarSqlSeguro(consulta, projectId) {
+function ejecutarSqlSeguro(consulta, projectId) {
   const parametros = { projectId: String(projectId) };
   if (consulta.includes(':hoy')) parametros.hoy = todayBogota();
 
-  const db = await getReadOnlyDb();
+  const db = getReadOnlyDb();
   try {
-    return await db.all(consulta, parametros);
+    return db.prepare(consulta).all(parametros);
   } finally {
-    await db.close();
+    db.close();
   }
 }
 
@@ -91,7 +90,7 @@ function limpiarRespuestaHtml(texto) {
 
 export async function consultarChatLiderBedrock(payload, user) {
   const projectId = String(payload?.projectId || '').trim();
-  if (!(await esLiderDelProyecto(user, projectId))) {
+  if (!esLiderDelProyecto(user, projectId)) {
     return { success: false, error: 'Acceso denegado: este chat está habilitado únicamente para líderes del proyecto seleccionado.' };
   }
 
@@ -106,7 +105,7 @@ export async function consultarChatLiderBedrock(payload, user) {
   }
 
   try {
-    const directorio = await construirDirectorio(projectId);
+    const directorio = construirDirectorio(projectId);
     const sqlCrudo = await invocarModelo(
       apiKey,
       SQL_SYSTEM_INSTRUCTION,
@@ -114,7 +113,7 @@ export async function consultarChatLiderBedrock(payload, user) {
       400
     );
     const consulta = validarSql(extraerSql(sqlCrudo), projectId);
-    const filas = limitarResultados(await ejecutarSqlSeguro(consulta, projectId));
+    const filas = limitarResultados(ejecutarSqlSeguro(consulta, projectId));
 
     const respuestaCruda = await invocarModelo(
       apiKey,
