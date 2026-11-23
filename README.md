@@ -90,6 +90,8 @@ Para Google, crea un cliente **OAuth 2.0 → Aplicación web** en Google Cloud y
 
 ## Base de datos
 
+`getDb()` y `getReadOnlyDb()` exponen `get(sql, ...params)`, `all(sql, ...params)` y `run(sql, ...params)` sobre SQLite, conservando la API nativa `prepare()`. El callback de Google usa estos métodos de compatibilidad; no requieren recrear la base de datos.
+
 Archivo: `data/optimia.sqlite` (ignorado por git). Zona horaria de la app: `America/Bogota`.
 
 ### Tablas
