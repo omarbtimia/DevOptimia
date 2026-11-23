@@ -28,31 +28,30 @@ export async function GET(request) {
 
     const googleUser = await getGoogleUser(request, code);
     auditIdentity = googleUser.email;
-    const db = await getDb();
-    let user = await db.get(
-      'SELECT id, email, nombre, role, activo FROM users WHERE email = ?',
-      googleUser.email
-    );
+    const db = getDb();
+    let user = db.prepare(
+      'SELECT id, email, nombre, role, activo FROM users WHERE email = ?'
+    ).get(googleUser.email);
 
     if (user && Number(user.activo) !== 1) {
       throw new Error('El usuario está inactivo. Contacta a un administrador.');
     }
 
     if (!user) {
-      await db.run(
+      db.prepare(
         `INSERT INTO users (username, email, nombre, password_hash, role)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(
         googleUser.email,
         googleUser.email,
         googleUser.nombre,
         hashPassword(newToken()),
         'Usuario'
       );
-      user = await db.get(
-        'SELECT id, email, nombre, role, activo FROM users WHERE email = ?',
-        googleUser.email
-      );
-      await audit(
+      user = db.prepare(
+        'SELECT id, email, nombre, role, activo FROM users WHERE email = ?'
+      ).get(googleUser.email);
+      audit(
         'CREAR',
         'Usuario',
         user.email,
@@ -62,10 +61,10 @@ export async function GET(request) {
     }
 
     await createSession(user.id);
-    await audit('LOGIN', 'Sesion', user.email, 'Inicio de sesión con Google', user);
+    audit('LOGIN', 'Sesion', user.email, 'Inicio de sesión con Google', user);
     return loginRedirect(request);
   } catch (error) {
-    await audit(
+    audit(
       'LOGIN_FALLIDO',
       'Sesion',
       auditIdentity,
