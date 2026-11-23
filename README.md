@@ -41,6 +41,23 @@ Copia `.env.example` a `.env.local`:
 
 Las credenciales AWS se toman de la cadena estándar (variables de entorno, perfil local o rol IAM). Nunca se guardan passwords de base de datos: DSQL usa tokens IAM de corta vida firmados con `@aws-sdk/dsql-signer`.
 
+### Despliegue en AWS Amplify
+
+El archivo `amplify.yml` copia durante el build las variables privadas de servidor a `.env.production`, como requiere el hosting SSR de Next.js. Configura en **Amplify → App settings → Environment variables**, por cada rama:
+
+```text
+DB_DRIVER=aurora
+AURORA_DSQL_HOST=xxx.dsql.us-east-1.on.aws
+AURORA_DSQL_REGION=us-east-1
+AURORA_DSQL_CRUD_USER=optimia_crud
+AURORA_DSQL_READ_USER=optimia_read
+AWS_BEARER_TOKEN_BEDROCK=...
+```
+
+Asigna además un **Compute role** a la aplicación Amplify con permisos de conexión a Aurora DSQL. La app utiliza ese rol para generar tokens IAM temporales; no necesita una contraseña de base de datos. Ninguna de estas variables debe usar el prefijo `NEXT_PUBLIC_`, porque ese prefijo expone el valor al navegador.
+
+Los secretos de GitHub Actions son independientes. `AWS_ROLE_TO_ASSUME` y los valores utilizados por `npm run db:init:aurora` se configuran en **GitHub → Settings → Secrets and variables → Actions**. El workflow usa OIDC para asumir el rol y omite la inicialización de Aurora cuando esos secretos no están disponibles, como sucede en pull requests desde forks.
+
 ## Comandos
 
 | Comando | Descripción |

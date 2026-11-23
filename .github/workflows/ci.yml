@@ -22,7 +22,15 @@ jobs:
       AURORA_DSQL_CRUD_IAM_ROLE_ARN: ${{ secrets.AURORA_DSQL_CRUD_IAM_ROLE_ARN }}
 
     steps:
-      # ...
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run db:init
+      - run: npm run lint
+      - run: npm run build
 
       - name: Configurar credenciales AWS
         if: env.AWS_ROLE_TO_ASSUME != ''
