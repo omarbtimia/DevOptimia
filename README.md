@@ -46,11 +46,11 @@ Luego ejecuta `npm run env:check`. El comando muestra solo el nombre y el estado
 
 ### Validación en GitHub Actions
 
-El workflow expone `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` y `AWS_BEARER_TOKEN_BEDROCK` al job y ejecuta `npm run env:check`. Configura los tres primeros como **Secrets o Variables** del repositorio; si falta alguno, el job falla con un mensaje como `[FALTA] GOOGLE_CLIENT_SECRET`, sin mostrar valores. En pull requests desde forks la validación se omite porque GitHub no entrega secrets.
+El workflow expone `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` y `AWS_BEARER_TOKEN_BEDROCK` desde **GitHub Actions Secrets** al job y ejecuta `npm run env:check`. Si falta alguno de los tres valores de Google, el job falla con un mensaje como `[FALTA] GOOGLE_CLIENT_SECRET`, sin mostrar valores. En pull requests desde forks la validación se omite porque GitHub no entrega secrets.
 
 ### Despliegue en AWS Amplify
 
-El archivo `amplify.yml` copia durante el build las variables privadas de servidor a `.env.production`, como requiere el hosting SSR de Next.js. Configura en **Amplify → App settings → Environment variables**, por cada rama:
+El archivo `amplify.yml` copia durante el build las variables privadas de servidor a `.env.production`, como requiere el hosting SSR de Next.js. No usa los Secrets de GitHub: Amplify y GitHub son entornos independientes. Configura en **Amplify → App settings → Environment variables**, por cada rama:
 
 ```text
 SQLITE_PATH=optimia.sqlite
@@ -61,6 +61,8 @@ GOOGLE_REDIRECT_URI=https://<dominio>/api/auth/google/callback
 ```
 
 Ninguna de estas variables debe usar el prefijo `NEXT_PUBLIC_`, porque ese prefijo expone el valor al navegador.
+
+El build ejecuta `npm run env:check` después de crear `.env.production`. Si Amplify no inyecta una variable, el log mostrará únicamente su nombre con `[FALTA]` y detendrá el despliegue sin revelar secretos.
 
 Para Google, crea un cliente **OAuth 2.0 → Aplicación web** en Google Cloud y registra exactamente la URI de producción indicada en `GOOGLE_REDIRECT_URI`. Los usuarios nuevos se crean con nombre y correo verificados por Google, perfil global `Usuario`, sin asignaciones de proyecto y sin contraseña conocida. Si el correo ya existe y está activo, Google inicia sesión en esa misma cuenta.
 
