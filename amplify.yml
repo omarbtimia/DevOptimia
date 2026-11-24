@@ -3,17 +3,52 @@ frontend:
   phases:
     preBuild:
       commands:
-        - nvm install 22
-        - nvm use 22
-        - npm ci --cache .npm --prefer-offline
+        - |
+          echo "=== [1/3] DIAGNÓSTICO DE ENTORNO Y NODE.JS ==="
+          if ! nvm install 22 || ! nvm use 22; then
+            echo "[ERROR CRÍTICO] No se pudo instalar o activar Node 22."
+            echo "  -> CAUSA PROBABLE: La imagen de compilación de Amplify es antigua (Amazon Linux 2 no soporta glibc para Node 22)."
+            echo "  -> SOLUCIÓN: Ve a AWS Amplify -> Build settings -> Build image settings y cambia a 'Amazon Linux:2023'."
+            exit 1
+          fi
+          echo "[OK] Node $(node -v) y NPM $(npm -v) activos."
+        - |
+          echo "=== [2/3] INSTALACIÓN DE DEPENDENCIAS ==="
+          if ! npm ci --cache .npm --prefer-offline; then
+            echo "[ERROR CRÍTICO] Falló 'npm ci'."
+            echo "  -> CAUSA PROBABLE 1: 'package-lock.json' no está sincronizado con 'package.json'."
+            echo "  -> CAUSA PROBABLE 2: Falta 'package-lock.json' en el repositorio o hay dependencias con conflictos de peerDependencies."
+            echo "  -> SOLUCIÓN: Ejecuta 'npm install' en local, sube el 'package-lock.json' actualizado y reintenta."
+            exit 1
+          fi
+          echo "[OK] Dependencias instaladas correctamente."
+
     build:
       commands:
         - |
+          echo "=== [1/4] GENERACIÓN Y AUDITORÍA DE VARIABLES DE ENTORNO ==="
+          REQUIRED_VARS="AURORA_DSQL_HOST AURORA_DSQL_REGION AURORA_DSQL_DATABASE AURORA_DSQL_CRUD_USER AURORA_DSQL_READ_USER GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REDIRECT_URI"
+          MISSING=0
+          for VAR in $REQUIRED_VARS; do
+            eval VAL=\${$VAR:-}
+            if [ -z "$VAL" ]; then
+              echo "[ALERTA] Variable requerida vacía o no configurada: $VAR"
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "[ERROR CRÍTICO] Faltan variables obligatorias en Amplify."
+            echo "  -> CAUSA: No están definidas en la consola o están restringidas a otra rama."
+            echo "  -> SOLUCIÓN: Ve a Amplify -> Hosting -> Environment variables y verifica que apliquen a la rama '${AWS_BRANCH:-actual}'."
+            exit 1
+          fi
+
           printf '%s\n' \
             "AURORA_DSQL_HOST=${AURORA_DSQL_HOST:-}" \
             "AURORA_DSQL_REGION=${AURORA_DSQL_REGION:-}" \
             "AURORA_DSQL_DATABASE=${AURORA_DSQL_DATABASE:-}" \
-            "AURORA_DSQL_PORT=${AURORA_DSQL_PORT:-}" \
+            "AURORA_DSQL_PORT=${AURORA_DSQL_PORT:-5432}" \
             "AURORA_DSQL_CRUD_USER=${AURORA_DSQL_CRUD_USER:-}" \
             "AURORA_DSQL_READ_USER=${AURORA_DSQL_READ_USER:-}" \
             "AURORA_DSQL_POOL_MAX=${AURORA_DSQL_POOL_MAX:-}" \
@@ -23,19 +58,89 @@ frontend:
             "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}" \
             "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}" \
             "GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-}" > .env.production
-        - npm run env:check
-        - |
-          set -e
-          if [ "${AWS_BRANCH:-}" = "develop" ] && [ -z "${AWS_PULL_REQUEST_ID:-}" ]; then
-            echo "Ejecutando migraciones en rama develop..."
-            npm run db:migrate:status
-            AURORA_ALLOW_DESTRUCTIVE=0 npm run db:migrate
-            npm run db:grant
-            npm run db:init
-          else
-            echo "Migraciones omitidas: solo se ejecutan en develop y fuera de previews."
+
+          if ! npm run env:check; then
+            echo "[ERROR CRÍTICO] El validador 'npm run env:check' rechazó el archivo .env.production."
+            echo "  -> CAUSA PROBABLE: Formato inválido (ej. URL sin https://, puerto no numérico o región mal escrita)."
+            exit 1
           fi
-        - npm run build
+          echo "[OK] Variables verificadas y escritas en .env.production."
+
+        - |
+          echo "=== [2/4] VERIFICACIÓN DE IDENTIDAD IAM Y RED ==="
+          if command -v aws >/dev/null 2>&1; then
+            echo "[INFO] Verificando rol IAM asignado al contenedor de Amplify..."
+            if ! aws sts get-caller-identity; then
+              echo "[AVISO] No hay rol IAM adjunto al Build de Amplify."
+              echo "  -> IMPACTO: Si Aurora DSQL o Bedrock requieren credenciales del rol de servicio, la conexión fallará."
+              echo "  -> SOLUCIÓN: Asigna un Service Role en Amplify -> App settings -> IAM roles."
+            fi
+          fi
+
+          echo "[INFO] Probando resolución DNS del endpoint DSQL (${AURORA_DSQL_HOST})..."
+          if command -v getent >/dev/null 2>&1 && ! getent hosts "${AURORA_DSQL_HOST}" >/dev/null 2>&1; then
+            echo "[ERROR CRÍTICO] No se puede resolver el dominio del clúster: '${AURORA_DSQL_HOST}'."
+            echo "  -> CAUSA PROBABLE 1: El clúster Aurora DSQL fue eliminado o el identificador tiene un error tipográfico."
+            echo "  -> CAUSA PROBABLE 2: Incluiste 'https://' o el puerto dentro de AURORA_DSQL_HOST (debe ser solo 'xxx.dsql.region.on.aws')."
+            exit 1
+          fi
+          echo "[OK] Endpoint DNS de Aurora DSQL válido."
+
+        - |
+          echo "=== [3/4] EVALUACIÓN Y EJECUCIÓN DE MIGRACIONES DSQL ==="
+          set -e
+          echo "[CONTEXTO] AWS_BRANCH='${AWS_BRANCH:-no_definida}' | AWS_PULL_REQUEST_ID='${AWS_PULL_REQUEST_ID:-ninguno}'"
+
+          if [ "${AWS_BRANCH:-}" != "develop" ]; then
+            echo "[OMITIDO] Migraciones canceladas: la rama actual es '${AWS_BRANCH:-desconocida}' y solo se permiten en 'develop'."
+          elif [ -n "${AWS_PULL_REQUEST_ID:-}" ]; then
+            echo "[OMITIDO] Migraciones canceladas: ejecución detectada en entorno Preview/PR (#${AWS_PULL_REQUEST_ID})."
+          else
+            echo "[EJECUTANDO] Rama 'develop' confirmada fuera de PR. Iniciando operaciones en Aurora DSQL..."
+
+            npm run db:migrate:status || {
+              echo "[ERROR EN DB:MIGRATE:STATUS] No se pudo consultar el estado de migraciones en '${AURORA_DSQL_HOST}'."
+              echo "  -> CAUSA PROBABLE 1 (Permisos IAM): Al Service Role de Amplify le falta 'dsql:DbConnect' o 'dsql:DbConnectAdmin' sobre el ARN del clúster."
+              echo "  -> CAUSA PROBABLE 2 (Región): AURORA_DSQL_REGION ('${AURORA_DSQL_REGION}') no coincide con la región real del clúster al firmar el token IAM."
+              echo "  -> CAUSA PROBABLE 3 (Rol PostgreSQL): El usuario DB no está vinculado al ARN del rol IAM dentro de DSQL (AWS IAMMapping)."
+              exit 1
+            }
+
+            AURORA_ALLOW_DESTRUCTIVE=0 npm run db:migrate || {
+              echo "[ERROR EN DB:MIGRATE] Falló la aplicación de migraciones."
+              echo "  -> CAUSA PROBABLE 1 (Bloqueo de seguridad): La migración intenta borrar tablas/columnas y AURORA_ALLOW_DESTRUCTIVE=0 lo bloqueó."
+              echo "  -> CAUSA PROBABLE 2 (Límites de Aurora DSQL): El SQL incluye sintaxis no soportada en DSQL (ej. FOREIGN KEY, triggers o DDL + DML en la misma transacción)."
+              echo "  -> CAUSA PROBABLE 3 (Concurrencia OCC): Conflicto de serialización en DSQL porque otro proceso modificó el esquema al mismo tiempo."
+              exit 1
+            }
+
+            npm run db:grant || {
+              echo "[ERROR EN DB:GRANT] No se pudieron asignar permisos SQL a CRUD_USER ('${AURORA_DSQL_CRUD_USER}') o READ_USER ('${AURORA_DSQL_READ_USER}')."
+              echo "  -> CAUSA PROBABLE 1: El token actual conectó con permisos 'dsql:DbConnect' estándar en vez de 'dsql:DbConnectAdmin' (requerido para GRANT/CREATE ROLE)."
+              echo "  -> CAUSA PROBABLE 2: Los roles '${AURORA_DSQL_CRUD_USER}' o '${AURORA_DSQL_READ_USER}' aún no existen en la base de datos."
+              exit 1
+            }
+
+            npm run db:init || {
+              echo "[ERROR EN DB:INIT] Falló la carga de datos iniciales (seed/init)."
+              echo "  -> CAUSA PROBABLE: Clave duplicada no manejada (falta ON CONFLICT DO NOTHING) o violación de tipos/restricciones."
+              exit 1
+            }
+
+            echo "[OK] Todas las fases de base de datos finalizaron con éxito."
+          fi
+
+        - |
+          echo "=== [4/4] COMPILACIÓN DE NEXT.JS ==="
+          if ! npm run build; then
+            echo "[ERROR CRÍTICO] Falló 'npm run build'."
+            echo "  -> CAUSA PROBABLE 1: Error de tipos TypeScript o reglas de ESLint durante la compilación."
+            echo "  -> CAUSA PROBABLE 2: Una página estática intentó consultar Aurora DSQL o Bedrock en build-time y falló por permisos/red."
+            echo "  -> CAUSA PROBABLE 3: Falta memoria RAM en el contenedor (puedes agregar NODE_OPTIONS='--max-old-space-size=4096' si ves 'JavaScript heap out of memory')."
+            exit 1
+          fi
+          echo "[OK] Build de Next.js completado."
+
   artifacts:
     baseDirectory: .next
     files:
