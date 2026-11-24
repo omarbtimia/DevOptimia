@@ -12,6 +12,9 @@
     "lint": "eslint .",
     "db:init": "node scripts/init-db.mjs",
     "db:init:aurora": "node scripts/init-aurora.mjs",
+    "db:migrate": "node scripts/migrate-aurora.mjs",
+    "db:migrate:status": "node scripts/migrate-aurora.mjs --status",
+    "db:grant": "node scripts/grant-aurora.mjs",
     "env:check": "node scripts/check-env.mjs",
     "ui:sync": "node scripts/split-legacy.mjs"
   },

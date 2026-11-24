@@ -125,6 +125,26 @@ Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con b
 - No se conecta a Aurora durante CI.
 - En pull requests desde forks se omite `env:check` porque GitHub no entrega secrets.
 
+## Migraciones de esquema
+
+- `db/aurora-schema.sql` sigue siendo el esquema gobernado y la base para una instalación nueva.
+- Los cambios posteriores se entregan como archivos numerados en `db/migrations/`, por ejemplo `db/migrations/0002_nueva_columna.sql`. Cada cambio de `db/aurora-schema.sql` debe venir acompañado de una migración nueva.
+- La tabla `schema_migrations` registra versión, archivo, checksum y fecha de aplicación. La tabla `schema_state` guarda el checksum del esquema gobernado.
+- Un archivo ya aplicado no debe modificarse: el runner falla por diferencia de checksum. Para corregirlo, crea una nueva migración.
+- Un cambio en `db/aurora-schema.sql` sin migración nueva también falla.
+- Los índices `CREATE INDEX ASYNC` se esperan antes de continuar. Los errores temporales de concurrencia `40001/OC001` se reintentan automáticamente.
+- Cada sentencia se ejecuta por separado porque Aurora DSQL no permite varias DDL ni mezclar DDL con DML en una misma transacción.
+
+### Workflow `Aurora DB schema`
+
+- Se dispara con push a `develop` o `main` cuando cambian `db/**`, los scripts de migración o las dependencias. También puede ejecutarse manualmente con `workflow_dispatch`.
+- Usa un solo cluster, sin separación por entornos.
+- Secrets requeridos: `AURORA_DSQL_HOST`, `AURORA_DSQL_REGION`, `AURORA_DSQL_CRUD_USER`, `AURORA_DSQL_READ_USER` y `AWS_ROLE_TO_ASSUME`.
+- Secrets opcionales: `AURORA_DSQL_DATABASE`, `AURORA_DSQL_PORT`, `AURORA_DSQL_TOKEN_EXPIRES_IN` y `AURORA_DSQL_TOKEN_TTL`.
+- `AWS_ROLE_TO_ASSUME` debe ser un rol IAM asumible por OIDC con permiso `dsql:DbConnectAdmin`. No se usan claves AWS estáticas.
+- El workflow aplica migraciones, reaplica grants y verifica la conexión con el rol de lectura/escritura. No se ejecuta en el build de Amplify.
+- Las migraciones destructivas están bloqueadas. Para permitirlas, la migración debe incluir `-- @destructive` y el workflow debe ejecutarse manualmente con `allow_destructive=true`.
+
 ## Comandos
 
 | Comando | Descripción |
@@ -134,7 +154,10 @@ Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con b
 | `npm run lint` | ESLint. |
 | `npm run env:check` | Valida variables obligatorias mostrando solo nombres y estado. |
 | `npm run db:init` | Verifica la conexión Aurora con el rol de lectura/escritura. |
-| `npm run db:init:aurora` | Aplica `db/aurora-schema.sql`, crea/mapea roles DB y otorga permisos. |
+| `npm run db:init:aurora` | Aplica `db/aurora-schema.sql`, registra el baseline, crea/mapea roles DB y otorga permisos. |
+| `npm run db:migrate` | Aplica las migraciones pendientes y actualiza el estado del esquema. |
+| `npm run db:migrate:status` | Muestra migraciones aplicadas, pendientes y estado del esquema. |
+| `npm run db:grant` | Reaplica permisos de los roles DB sobre todas las tablas. |
 | `npm run ui:sync` | Regenera `src/generated/*` desde `legacy/*.html`. |
 
 ## Estructura
@@ -148,7 +171,11 @@ Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con b
 - `src/components/rpcShim.js`: compatibilidad con `google.script.run...`.
 - `src/lib/`: capa DSQL, auth, entradas, permisos, chat Bedrock y helpers.
 - `db/aurora-schema.sql`: esquema gobernado de Aurora DSQL.
-- `scripts/init-aurora.mjs`: aprovisionamiento del esquema y los roles.
+- `db/migrations/*.sql`: migraciones versionadas posteriores al baseline.
+- `scripts/init-aurora.mjs`: aprovisionamiento inicial del esquema y los roles.
+- `scripts/migrate-aurora.mjs`: runner de migraciones.
+- `scripts/grant-aurora.mjs`: reaplicación de permisos.
+- `scripts/lib/aurora.mjs`: utilidades compartidas de SQL, checksum, reintentos e índices.
 
 ## Base de datos
 
@@ -156,6 +183,7 @@ Zona horaria de la app: `America/Bogota`. `getDb()` y `getReadOnlyDb()` son asyn
 
 - `optimia_crud`: permisos de lectura/escritura en todas las tablas. Lo usa toda la app.
 - `optimia_read`: permisos de solo lectura sobre `projects`, `categories`, `assignments` y `entries`. Lo usa Morgan para ejecutar el SQL validado.
+- `schema_migrations` y `schema_state` son tablas internas del runner. No se otorgan al rol de solo lectura.
 - Los tokens IAM se cachean por menos de su vigencia y se renuevan automáticamente en cada conexión nueva.
 
 ### Columnas por tabla
@@ -218,6 +246,14 @@ Zona horaria de la app: `America/Bogota`. `getDb()` y `getReadOnlyDb()` son asyn
 | `audit` | `tipo` | `TEXT` |
 | `audit` | `id_registro` | `TEXT` |
 | `audit` | `detalle` | `TEXT` |
+| `schema_migrations` | `version` | `TEXT` |
+| `schema_migrations` | `filename` | `TEXT` |
+| `schema_migrations` | `checksum` | `TEXT` |
+| `schema_migrations` | `applied_at` | `TIMESTAMPTZ` |
+| `schema_migrations` | `applied_by` | `TEXT` |
+| `schema_state` | `id` | `TEXT` |
+| `schema_state` | `schema_checksum` | `TEXT` |
+| `schema_state` | `updated_at` | `TIMESTAMPTZ` |
 
 ### Claves e índices
 
@@ -230,5 +266,7 @@ Zona horaria de la app: `America/Bogota`. `getDb()` y `getReadOnlyDb()` son asyn
 | `assignments` | `(proyecto_id, email)` | `proyecto_id → projects.id` | `INDEX ASYNC (email)` |
 | `entries` | `id` | — | `INDEX ASYNC (owner_email, project_id)`, `INDEX ASYNC (parent_id)`, `INDEX ASYNC (project_id)` |
 | `audit` | `id` | — | — |
+| `schema_migrations` | `version` | — | — |
+| `schema_state` | `id` | — | — |
 
-Los defaults, `NOT NULL`, `CHECK`, el resto de relaciones y la definición completa de los índices están en `db/aurora-schema.sql`, que es la fuente gobernada de la estructura.
+Los defaults, `NOT NULL`, `CHECK`, el resto de relaciones y la definición completa de los índices de las tablas de aplicación están en `db/aurora-schema.sql`, que es la fuente gobernada de la estructura. Las tablas internas del runner se definen en `scripts/lib/aurora.mjs`.

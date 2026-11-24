@@ -1,0 +1,64 @@
+name: Aurora DB schema
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'db/**'
+      - 'scripts/migrate-aurora.mjs'
+      - 'scripts/grant-aurora.mjs'
+      - 'scripts/init-aurora.mjs'
+      - 'scripts/lib/aurora.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/db-migrate.yml'
+  workflow_dispatch:
+    inputs:
+      allow_destructive:
+        description: 'Permitir migraciones destructivas'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: aurora-db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AURORA_DSQL_HOST: ${{ secrets.AURORA_DSQL_HOST }}
+      AURORA_DSQL_REGION: ${{ secrets.AURORA_DSQL_REGION }}
+      AURORA_DSQL_DATABASE: ${{ secrets.AURORA_DSQL_DATABASE }}
+      AURORA_DSQL_PORT: ${{ secrets.AURORA_DSQL_PORT }}
+      AURORA_DSQL_CRUD_USER: ${{ secrets.AURORA_DSQL_CRUD_USER }}
+      AURORA_DSQL_READ_USER: ${{ secrets.AURORA_DSQL_READ_USER }}
+      AURORA_DSQL_TOKEN_EXPIRES_IN: ${{ secrets.AURORA_DSQL_TOKEN_EXPIRES_IN }}
+      AURORA_DSQL_TOKEN_TTL: ${{ secrets.AURORA_DSQL_TOKEN_TTL }}
+      AURORA_ALLOW_DESTRUCTIVE: ${{ inputs.allow_destructive && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Asumir rol AWS con OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AURORA_DSQL_REGION }}
+      - name: Estado antes de migrar
+        run: npm run db:migrate:status
+      - name: Aplicar migraciones
+        run: npm run db:migrate
+      - name: Reaplicar permisos
+        run: npm run db:grant
+      - name: Verificar conexión de la app
+        run: npm run db:init
