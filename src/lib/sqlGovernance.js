@@ -28,7 +28,7 @@ Parámetros obligatorios:
 - Nunca escribas el valor del proyecto literalmente.
 
 Salida SQL:
-- Un único SELECT válido en SQLite.
+- Un único SELECT válido en PostgreSQL/Aurora DSQL.
 - Empieza con SELECT y usa FROM.
 - No incluyas SELECT *, comillas triples, bloques de código, comentarios, explicaciones, punto y coma ni LIMIT.
 - Selecciona únicamente las columnas necesarias para responder la pregunta.
@@ -81,8 +81,9 @@ export function validarSql(sql, projectId = '') {
     'insert', 'update', 'delete', 'drop', 'alter', 'create', 'replace',
     'vacuum', 'reindex', 'begin', 'commit', 'rollback', 'trigger', 'index',
     'password', 'token', 'cookie', 'secret', 'hash', 'contraseña',
+    'information_schema', 'pg_catalog',
   ];
-  const patron = new RegExp(`\\b(${prohibidas.join('|')}|sqlite_\\w*)\\b`, 'i');
+  const patron = new RegExp(`\\b(${prohibidas.join('|')}|sqlite_\\w*|pg_\\w*)\\b`, 'i');
   if (patron.test(consulta)) throw new Error('La consulta intenta acceder a datos no permitidos.');
 
   if (/\b(LIMIT|OFFSET)\b/i.test(consulta)) throw new Error('La consulta no debe incluir LIMIT.');

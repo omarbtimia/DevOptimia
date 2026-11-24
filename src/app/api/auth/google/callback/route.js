@@ -3,12 +3,12 @@ import { getDb } from '@/lib/db';
 import { audit } from '@/lib/audit';
 import { consumeGoogleOAuthState, createSession } from '@/lib/auth';
 import { hashPassword, newToken } from '@/lib/crypto';
-import { getGoogleUser, getPublicOrigin } from '@/lib/googleOAuth';
+import { getGoogleUser } from '@/lib/googleOAuth';
 
 export const runtime = 'nodejs';
 
 function loginRedirect(request, error = '') {
-  const url = new URL(error ? '/login' : '/', getPublicOrigin(request));
+  const url = new URL(error ? '/login' : '/', request.url);
   if (error) url.searchParams.set('error', error);
   return NextResponse.redirect(url);
 }

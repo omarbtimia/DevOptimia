@@ -4,43 +4,39 @@ import { ApiError } from './errors.js';
 import { audit } from './audit.js';
 import { emailNorm, mapEntryRow, normalizarEstado_, nowBogota, todayBogota } from './utils.js';
 
-export function allowedCollaborators(projectId) {
+export async function allowedCollaborators(projectId) {
   if (!projectId) return null;
-  const db = getDb();
+  const db = await getDb();
   const allowed = new Set();
-
-  db.prepare('SELECT email FROM assignments WHERE proyecto_id = ?').all(String(projectId))
-    .forEach((r) => {
-      const email = emailNorm(r.email);
-      if (email) allowed.add(email);
-    });
-
+  const filas = await db.all('SELECT email FROM assignments WHERE proyecto_id = ?', String(projectId));
+  filas.forEach((r) => {
+    const email = emailNorm(r.email);
+    if (email) allowed.add(email);
+  });
   return allowed;
 }
 
-export function fetchEntriesData(targetUser, projectId) {
+export async function fetchEntriesData(targetUser, projectId) {
   const owner = emailNorm(targetUser);
   if (!owner) return [];
-  const db = getDb();
+  const db = await getDb();
   const rows = projectId
-    ? db.prepare('SELECT * FROM entries WHERE owner_email = ? AND project_id = ?').all(owner, String(projectId))
-    : db.prepare('SELECT * FROM entries WHERE owner_email = ?').all(owner);
+    ? await db.all('SELECT * FROM entries WHERE owner_email = ? AND project_id = ?', owner, String(projectId))
+    : await db.all('SELECT * FROM entries WHERE owner_email = ?', owner);
   return rows.map(mapEntryRow);
 }
 
-export function fetchAllEntriesData(userList, projectId) {
-  const permitidos = allowedCollaborators(projectId);
-  const users = [...new Set((userList || []).map(emailNorm).filter(Boolean))];
-  let all = [];
-  users.forEach((user) => {
-    if (permitidos && !permitidos.has(user)) return;
-    all = all.concat(fetchEntriesData(user, projectId));
-  });
-  return all;
+export async function fetchAllEntriesData(userList, projectId) {
+  const permitidos = await allowedCollaborators(projectId);
+  const users = [...new Set((userList || []).map(emailNorm).filter(Boolean))]
+    .filter((user) => !permitidos || permitidos.has(user));
+  const grupos = await Promise.all(users.map((user) => fetchEntriesData(user, projectId)));
+  return grupos.flat();
 }
 
-function tieneHijosAbiertos(parentId) {
-  const rows = getDb().prepare('SELECT estado FROM entries WHERE parent_id = ?').all(String(parentId));
+async function tieneHijosAbiertos(parentId) {
+  const db = await getDb();
+  const rows = await db.all('SELECT estado FROM entries WHERE parent_id = ?', String(parentId));
   return rows.some((r) => {
     const estado = normalizarEstado_(r.estado);
     return estado !== 'Completado' && estado !== 'Eliminada';
@@ -86,15 +82,15 @@ function entryRowFrom(data, existing) {
   };
 }
 
-export function saveEntry(data, user) {
-  const db = getDb();
-  const existing = data.id ? db.prepare('SELECT * FROM entries WHERE id = ?').get(String(data.id)) : null;
+export async function saveEntry(data, user) {
+  const db = await getDb();
+  const existing = data.id ? await db.get('SELECT * FROM entries WHERE id = ?', String(data.id)) : null;
 
   if (
     existing &&
     normalizarEstado_(data.estado) === 'Completado' &&
     (data.tipo === 'Tarea' || data.tipo === 'Subtarea') &&
-    tieneHijosAbiertos(existing.id)
+    await tieneHijosAbiertos(existing.id)
   ) {
     const tipoHijo = data.tipo === 'Tarea' ? 'subtareas' : 'avances/actividades';
     throw new ApiError(`No se puede marcar como "Completado": existen ${tipoHijo} sin completar dentro de este elemento.`);
@@ -103,36 +99,40 @@ export function saveEntry(data, user) {
   const row = entryRowFrom(data, existing);
   const columnas = Object.keys(row);
   const valores = columnas.map((c) => row[c]);
-  db.prepare(
+  await db.run(
     `INSERT INTO entries (${columnas.join(', ')})
      VALUES (${columnas.map(() => '?').join(', ')})
      ON CONFLICT(id) DO UPDATE SET
        ${columnas.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`).join(', ')},
-       updated_at = datetime('now')`
-  ).run(...valores);
+       updated_at = ?`,
+    ...valores, nowBogota()
+  );
 
-  audit(existing ? 'EDITAR' : 'CREAR', data.tipo, row.id,
+  await audit(existing ? 'EDITAR' : 'CREAR', data.tipo, row.id,
     `Proyecto: ${row.project_id} | Estado: ${row.estado} | Cat: ${row.categoria || '-'}`, user);
   return { success: true };
 }
 
-export function saveNota(data, user) {
-  const db = getDb();
+export async function saveNota(data, user) {
+  const db = await getDb();
   const owner = emailNorm(data.owner);
-  const result = db.prepare('UPDATE entries SET nota = ?, updated_at = datetime(?) WHERE id = ? AND owner_email = ?')
-    .run(data.contenido || '', nowBogota(), String(data.tareaId), owner);
+  const result = await db.run(
+    'UPDATE entries SET nota = ?, updated_at = ? WHERE id = ? AND owner_email = ?',
+    data.contenido || '', nowBogota(), String(data.tareaId), owner
+  );
   if (!result.changes) return { success: false };
-  audit('EDITAR', 'Nota', String(data.tareaId), `Owner: ${owner}`, user);
+  await audit('EDITAR', 'Nota', String(data.tareaId), `Owner: ${owner}`, user);
   return { success: true };
 }
 
-export function saveGeneralProjectInfo(data, user) {
-  const db = getDb();
+export async function saveGeneralProjectInfo(data, user) {
+  const db = await getDb();
   const owner = emailNorm(data.owner);
   const projectId = String(data.projectId || '');
-  const existing = db.prepare(
-    "SELECT * FROM entries WHERE tipo = 'General' AND owner_email = ? AND project_id = ? LIMIT 1"
-  ).get(owner, projectId);
+  const existing = await db.get(
+    "SELECT * FROM entries WHERE tipo = 'General' AND owner_email = ? AND project_id = ? LIMIT 1",
+    owner, projectId
+  );
   const row = {
     id: existing?.id || randomUUID(),
     owner_email: owner,
@@ -159,30 +159,32 @@ export function saveGeneralProjectInfo(data, user) {
     descripcion_tarea: '',
   };
   const columnas = Object.keys(row);
-  db.prepare(
+  await db.run(
     `INSERT INTO entries (${columnas.join(', ')})
      VALUES (${columnas.map(() => '?').join(', ')})
      ON CONFLICT(id) DO UPDATE SET
        ${columnas.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`).join(', ')},
-       updated_at = datetime('now')`
-  ).run(...columnas.map((c) => row[c]));
-  audit(existing ? 'EDITAR' : 'CREAR', 'InfoGeneral', row.id, `Proyecto: ${projectId} | Owner: ${owner}`, user);
+       updated_at = ?`,
+    ...columnas.map((c) => row[c]), nowBogota()
+  );
+  await audit(existing ? 'EDITAR' : 'CREAR', 'InfoGeneral', row.id, `Proyecto: ${projectId} | Owner: ${owner}`, user);
   return { success: true };
 }
 
-export function saveAtrasoAvance(data, user) {
-  const db = getDb();
+export async function saveAtrasoAvance(data, user) {
+  const db = await getDb();
   const owner = emailNorm(data.owner);
-  const row = db.prepare('SELECT observaciones FROM entries WHERE id = ? AND owner_email = ?')
-    .get(String(data.avanceId), owner);
+  const row = await db.get('SELECT observaciones FROM entries WHERE id = ? AND owner_email = ?', String(data.avanceId), owner);
   if (!row) return { success: false };
 
   const fecha = todayBogota();
   const nuevaEntrada = `[${fecha}]::${String(data.justificacion || '').trim()}`;
   const actual = String(row.observaciones || '').trim();
   const observaciones = actual ? `${actual}homoplato${nuevaEntrada}` : nuevaEntrada;
-  db.prepare('UPDATE entries SET observaciones = ?, updated_at = datetime(?) WHERE id = ?')
-    .run(observaciones, nowBogota(), String(data.avanceId));
-  audit('EDITAR', 'AtrasoAvance', String(data.avanceId), `Owner: ${owner} | Fecha: ${fecha}`, user);
+  await db.run(
+    'UPDATE entries SET observaciones = ?, updated_at = ? WHERE id = ?',
+    observaciones, nowBogota(), String(data.avanceId)
+  );
+  await audit('EDITAR', 'AtrasoAvance', String(data.avanceId), `Owner: ${owner} | Fecha: ${fecha}`, user);
   return { success: true, fecha };
 }
