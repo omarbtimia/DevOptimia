@@ -1,70 +1,129 @@
-# Optimia (Next.js + SQLite)
+# Optimia (Next.js + Aurora DSQL)
 
-Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con backend propio y SQLite. El comportamiento y la interfaz de **proyectos abiertos, configuración y chat de líderes de proyecto** se conservan; **proyectos cerrados fueron eliminados** por completo.
+Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con backend propio y **Aurora DSQL como único motor**. Local y Amplify usan las mismas variables de entorno y los mismos roles DB. No hay SQLite en runtime.
 
-## Requisitos y arranque
+## Requisitos previos
 
 - Node.js >= 22.5 (recomendado 24) y npm.
-- No se necesita Google Sheets ni `clasp`.
+- Un cluster Aurora DSQL ya creado.
+- AWS CLI con SSO, perfil o STS para firmar tokens DSQL.
+- Una identidad AWS con `dsql:DbConnectAdmin` para el aprovisionamiento inicial.
+- Los roles IAM que se mapearán a los roles DB `optimia_crud` y `optimia_read`.
 
-```bash
-npm install
-npm run db:init      # crea ./data/optimia.sqlite y siembra el usuario admin
-npm run dev          # http://localhost:3000
-```
+## Configuración local (paso a paso)
 
-La base se crea sola en el primer arranque si no existe. `npm run db:init` es explícito y seguro. Las bases anteriores se migran solas: el antiguo perfil `Líder` pasa a `Administrador`, `Colaborador` pasa a `Usuario`, y cada asignación recibe su propio rol.
+1. Instala dependencias:
 
-### Acceso inicial
+   ```bash
+   npm install
+   ```
 
-| Usuario | Contraseña | Perfil |
-| --- | --- | --- |
-| `admin` | `admin` | `Administrador` |
+2. Crea el archivo de entorno:
 
-Cámbiala en **Configuración → Usuarios → Editar admin → Contraseña**. El login acepta el `username` o el `email`. Los usuarios nuevos se crean en Configuración con nombre, email, contraseña inicial y perfil (`Administrador` o `Usuario`). El perfil `Administrador` da acceso a **Configuración**; en la vista abierta los permisos de edición global y chat dependen del rol de la asignación en ese proyecto.
+   ```bash
+   cp .env.example .env.local
+   ```
 
-### Variables de entorno
+3. Completa `.env.local`.
 
-Copia `.env.example` a `.env.local`:
+   Obligatorias:
 
-| Variable | Uso |
-| --- | --- |
-| `SQLITE_PATH` | Nombre del archivo dentro de `./data` (por defecto `optimia.sqlite`). |
-| `AWS_BEARER_TOKEN_BEDROCK` | Token bearer para el chat "Morgan" (solo para quien esté asignado como `Líder` en el proyecto activo). Sin él, el chat devuelve un error controlado. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Credenciales OAuth 2.0 de una aplicación web en Google Cloud. Habilitan el registro e inicio de sesión con cualquier cuenta de Google. |
-| `GOOGLE_REDIRECT_URI` | Callback autorizado en Google. Local: `http://localhost:3000/api/auth/google/callback`; producción: `https://<dominio>/api/auth/google/callback`. |
+   | Variable | Uso |
+   | --- | --- |
+   | `AURORA_DSQL_HOST` | Endpoint del cluster, sin `https://`. |
+   | `AURORA_DSQL_REGION` | Región AWS del cluster. |
+   | `AURORA_DSQL_CRUD_USER` | Rol DB de lectura/escritura. |
+   | `AURORA_DSQL_READ_USER` | Rol DB de solo lectura. |
+   | `GOOGLE_CLIENT_ID` | Cliente OAuth 2.0 de Google. |
+   | `GOOGLE_CLIENT_SECRET` | Secreto OAuth 2.0 de Google. |
+   | `GOOGLE_REDIRECT_URI` | Callback autorizado en Google. |
 
-Para usar **Continuar con Google** en local, completa `.env.local`:
+   Opcionales:
 
-```text
-GOOGLE_CLIENT_ID=tu-client-id
-GOOGLE_CLIENT_SECRET=tu-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
-```
+   | Variable | Uso |
+   | --- | --- |
+   | `AURORA_DSQL_DATABASE` | Base DSQL. Por defecto `postgres`. |
+   | `AURORA_DSQL_PORT` | Puerto DSQL. Por defecto `5432`. |
+   | `AURORA_DSQL_POOL_MAX` | Tamaño del pool. Por defecto `8`. |
+   | `AURORA_DSQL_TOKEN_EXPIRES_IN` | Vigencia del token IAM. |
+   | `AURORA_DSQL_TOKEN_TTL` | Renovación del token IAM. |
+   | `AURORA_DSQL_READ_IAM_ROLE_ARN` | ARN IAM del rol de solo lectura. Requerida por `db:init:aurora`. |
+   | `AURORA_DSQL_CRUD_IAM_ROLE_ARN` | ARN IAM del rol de lectura/escritura. Requerida por `db:init:aurora`. |
+   | `AWS_BEARER_TOKEN_BEDROCK` | Token para el chat Morgan. |
 
-Luego ejecuta `npm run env:check`. El comando muestra solo el nombre y el estado de cada variable (`[OK]`, `[FALTA]` u `[OPCIONAL]`); nunca imprime los valores.
+   Los marcadores de `.env.example` cuentan como variables faltantes. Ninguna variable debe usar el prefijo `NEXT_PUBLIC_`.
 
-### Validación en GitHub Actions
+4. Autentica AWS con el mismo rol IAM que se usará en Amplify:
 
-El workflow expone `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` y `AWS_BEARER_TOKEN_BEDROCK` desde **GitHub Actions Secrets** al job y ejecuta `npm run env:check`. Si falta alguno de los tres valores de Google, el job falla con un mensaje como `[FALTA] GOOGLE_CLIENT_SECRET`, sin mostrar valores. En pull requests desde forks la validación se omite porque GitHub no entrega secrets.
+   ```bash
+   aws sso login --profile <perfil>
+   ```
 
-### Despliegue en AWS Amplify
+   No pongas credenciales AWS estáticas en `.env.local`; la app usa la cadena estándar de AWS y tokens IAM de corta vida firmados con `@aws-sdk/dsql-signer`.
 
-El archivo `amplify.yml` copia durante el build las variables privadas de servidor a `.env.production`, como requiere el hosting SSR de Next.js. No usa los Secrets de GitHub: Amplify y GitHub son entornos independientes. Configura en **Amplify → App settings → Environment variables**, por cada rama:
+5. Aprovisiona Aurora una sola vez, con la identidad que tenga `dsql:DbConnectAdmin`:
 
-```text
-SQLITE_PATH=optimia.sqlite
-AWS_BEARER_TOKEN_BEDROCK=...
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REDIRECT_URI=https://<dominio>/api/auth/google/callback
-```
+   ```bash
+   npm run db:init:aurora
+   ```
 
-Ninguna de estas variables debe usar el prefijo `NEXT_PUBLIC_`, porque ese prefijo expone el valor al navegador.
+   Este paso aplica `db/aurora-schema.sql`, crea/mapea los roles DB y otorga los permisos correspondientes.
 
-El build ejecuta `npm run env:check` después de crear `.env.production`. Si Amplify no inyecta una variable, el log mostrará únicamente su nombre con `[FALTA]` y detendrá el despliegue sin revelar secretos.
+6. Valida el entorno:
 
-Para Google, crea un cliente **OAuth 2.0 → Aplicación web** en Google Cloud y registra exactamente la URI de producción indicada en `GOOGLE_REDIRECT_URI`. Los usuarios nuevos se crean con nombre y correo verificados por Google, perfil global `Usuario`, sin asignaciones de proyecto y sin contraseña conocida. Si el correo ya existe y está activo, Google inicia sesión en esa misma cuenta.
+   ```bash
+   npm run env:check
+   ```
+
+   Muestra solo nombre y estado (`[OK]`, `[FALTA]` u `[OPCIONAL]`); nunca imprime valores.
+
+7. Verifica la conexión con el rol de lectura/escritura:
+
+   ```bash
+   npm run db:init
+   ```
+
+8. Arranca la app:
+
+   ```bash
+   npm run dev
+   ```
+
+## Configuración en producción (AWS Amplify)
+
+1. En **Amplify → App settings → Environment variables**, configura por rama las mismas variables que en local:
+
+   ```text
+   AURORA_DSQL_HOST=xxx.dsql.us-east-1.on.aws
+   AURORA_DSQL_REGION=us-east-1
+   AURORA_DSQL_CRUD_USER=optimia_crud
+   AURORA_DSQL_READ_USER=optimia_read
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
+   GOOGLE_REDIRECT_URI=https://<dominio>/api/auth/google/callback
+
+   AURORA_DSQL_DATABASE=postgres
+   AURORA_DSQL_PORT=5432
+   AURORA_DSQL_POOL_MAX=8
+   AURORA_DSQL_TOKEN_EXPIRES_IN=900
+   AURORA_DSQL_TOKEN_TTL=780
+   AWS_BEARER_TOKEN_BEDROCK=...
+   ```
+
+2. Asigna a la app un **Compute role** de Amplify con permisos DSQL y mapéalo en la base a `optimia_crud` y `optimia_read`. Debe ser el mismo rol IAM usado en local.
+
+3. En Google Cloud, registra exactamente la URI definida en `GOOGLE_REDIRECT_URI` como callback autorizado.
+
+4. Aprovisiona Aurora una vez fuera del pipeline, con la identidad `dsql:DbConnectAdmin` y los ARNs de los roles IAM. No incluyas `db:init:aurora` en el build de Amplify.
+
+5. Despliega. `amplify.yml` instala Node 22, ejecuta `npm ci`, copia las variables a `.env.production`, ejecuta `npm run env:check` y compila con `npm run build`.
+
+## GitHub Actions
+
+- El workflow toma `AURORA_DSQL_HOST`, `AURORA_DSQL_REGION`, `AURORA_DSQL_CRUD_USER`, `AURORA_DSQL_READ_USER`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` y `AWS_BEARER_TOKEN_BEDROCK` de GitHub Actions Secrets.
+- Ejecuta `npm ci`, `npm run env:check`, `npm run lint` y `npm run build`.
+- No se conecta a Aurora durante CI.
+- En pull requests desde forks se omite `env:check` porque GitHub no entrega secrets.
 
 ## Comandos
 
@@ -73,144 +132,103 @@ Para Google, crea un cliente **OAuth 2.0 → Aplicación web** en Google Cloud y
 | `npm run dev` | Servidor de desarrollo. |
 | `npm run build` / `npm start` | Build y servidor de producción. |
 | `npm run lint` | ESLint. |
-| `npm run db:init` | Crea/verifica esquema y usuario admin. |
 | `npm run env:check` | Valida variables obligatorias mostrando solo nombres y estado. |
+| `npm run db:init` | Verifica la conexión Aurora con el rol de lectura/escritura. |
+| `npm run db:init:aurora` | Aplica `db/aurora-schema.sql`, crea/mapea roles DB y otorga permisos. |
 | `npm run ui:sync` | Regenera `src/generated/*` desde `legacy/*.html`. |
 
 ## Estructura
 
-- `legacy/Home.html`, `legacy/Index.html`, `legacy/Config.html`: **fuente visual** de las tres pantallas (idénticas a las originales salvo navegación, quita de cerrados y campo de contraseña).
-- `src/generated/*.css|markup.js|client.js`: copias generadas que consume Next. **No editar a mano**; editar `legacy/` y correr `npm run ui:sync`.
-- `src/app/(app)/`: rutas protegidas `/` (Home), `/abiertos` (Index), `/config` (solo `Administrador`).
+- `legacy/Home.html`, `legacy/Index.html`, `legacy/Config.html`: fuente visual de las tres pantallas.
+- `src/generated/*.css|markup.js|client.js`: copias generadas. No editar a mano; editar `legacy/`.
+- `src/app/(app)/`: rutas protegidas `/`, `/abiertos` y `/config`.
 - `src/app/login/`: login con usuario/contraseña y Google.
-- `src/app/api/auth/*`: login/logout (cookie `optimia_session`, httpOnly, 12 h).
-- `src/app/api/rpc/`: único endpoint backend. Recibe `{ method, params }` y despacha a `src/lib/rpc.js`, manteniendo los nombres de las funciones de Apps Script (`getAppData`, `cfgGetAll`, `fetchEntries`, `saveOrUpdateEntry`, …).
-- `src/components/rpcShim.js`: compatibilidad con `google.script.run.withSuccessHandler(...).withFailureHandler(...).metodo(...)` para que el JS legado funcione sin cambios.
-- `src/lib/`: SQLite, auth, entradas, permisos, chat Bedrock y helpers.
+- `src/app/api/auth/*`: login/logout y OAuth de Google.
+- `src/app/api/rpc/`: endpoint que despacha a `src/lib/rpc.js`.
+- `src/components/rpcShim.js`: compatibilidad con `google.script.run...`.
+- `src/lib/`: capa DSQL, auth, entradas, permisos, chat Bedrock y helpers.
+- `db/aurora-schema.sql`: esquema gobernado de Aurora DSQL.
+- `scripts/init-aurora.mjs`: aprovisionamiento del esquema y los roles.
 
 ## Base de datos
 
-`getDb()` y `getReadOnlyDb()` exponen `get(sql, ...params)`, `all(sql, ...params)` y `run(sql, ...params)` sobre SQLite, conservando la API nativa `prepare()`. El callback de Google usa estos métodos de compatibilidad; no requieren recrear la base de datos.
+Zona horaria de la app: `America/Bogota`. `getDb()` y `getReadOnlyDb()` son async y exponen `get/all/run/exec` sobre `PgAdapter`; los parámetros `?` y `:nombre` se convierten a `$1`, `$2`, etc.
 
-Archivo: `data/optimia.sqlite` (ignorado por git). Zona horaria de la app: `America/Bogota`.
+- `optimia_crud`: permisos de lectura/escritura en todas las tablas. Lo usa toda la app.
+- `optimia_read`: permisos de solo lectura sobre `projects`, `categories`, `assignments` y `entries`. Lo usa Morgan para ejecutar el SQL validado.
+- Los tokens IAM se cachean por menos de su vigencia y se renuevan automáticamente en cada conexión nueva.
 
-### Tablas
+### Columnas por tabla
 
-#### `users`
-| Columna | Tipo | Restricción | Descripción |
-| --- | --- | --- | --- |
-| `id` | INTEGER | PK, AUTOINCREMENT | Identificador interno. |
-| `username` | TEXT | UNIQUE, NOCASE | Login (admin = `admin`; usuarios nuevos = su email). |
-| `email` | TEXT | UNIQUE, NOCASE | Email usado como "hoja/owner" y en asignaciones. |
-| `nombre` | TEXT | DEFAULT `''` | Nombre visible en la UI; se rellena desde el email si falta. |
-| `password_hash` | TEXT | NOT NULL | `scrypt$salt$hash` (Nunca texto plano). |
-| `role` | TEXT | `Administrador` \| `Usuario` | Perfil global. `Administrador` accede a Configuración; no otorga privilegios automáticos en proyectos abiertos. |
-| `activo` | INTEGER | DEFAULT 1 | 1 = activo. |
-| `created_at` | TEXT | datetime UTC | Alta. |
-
-#### `sessions`
-| Columna | Tipo | Restricción | Descripción |
-| --- | --- | --- | --- |
-| `token_hash` | TEXT | PK | SHA-256 del token de la cookie (el token sin hashear no se guarda). |
-| `user_id` | INTEGER | FK → `users.id` ON DELETE CASCADE | Usuario de la sesión. |
-| `created_at` | TEXT | datetime UTC | Creación. |
-| `expires_at` | TEXT | datetime UTC | Expira a las 12 h. |
-
-#### `projects`
-| Columna | Tipo | Restricción | Descripción |
-| --- | --- | --- | --- |
-| `id` | TEXT | PK | UUID. |
-| `nombre` | TEXT | NOT NULL | Nombre del proyecto. |
-| `lider_email` | TEXT | NOCASE, DEFAULT `''` | Solo compatibilidad con BD migradas. La fuente real del líder es `assignments.rol = 'Líder'`. |
-| `created_at` | TEXT | datetime UTC | Alta. |
-
-> No existe columna de estado: todos los proyectos son abiertos. Las columnas `FECHA_CIERRE`, `SDA`, `DURACION_SEMANAS` y las hojas de proyectos cerrados se eliminaron.
-
-#### `categories`
-| Columna | Tipo | Descripción |
+| Tabla | Columna | Tipo |
 | --- | --- | --- |
-| `id` | TEXT | PK (UUID). |
-| `nombre` | TEXT | Nombre de categoría. |
-| `creado_por` | TEXT | Email de quien la creó. |
-| `fecha` | TEXT | `YYYY-MM-DD` (Bogotá). |
-| `created_at` | TEXT | datetime UTC. |
+| `users` | `id` | `BIGINT` |
+| `users` | `username` | `TEXT` |
+| `users` | `email` | `TEXT` |
+| `users` | `nombre` | `TEXT` |
+| `users` | `password_hash` | `TEXT` |
+| `users` | `role` | `TEXT` |
+| `users` | `activo` | `INTEGER` |
+| `users` | `created_at` | `TIMESTAMPTZ` |
+| `sessions` | `token_hash` | `TEXT` |
+| `sessions` | `user_id` | `BIGINT` |
+| `sessions` | `created_at` | `TIMESTAMPTZ` |
+| `sessions` | `expires_at` | `TEXT` |
+| `projects` | `id` | `TEXT` |
+| `projects` | `nombre` | `TEXT` |
+| `projects` | `lider_email` | `TEXT` |
+| `projects` | `created_at` | `TIMESTAMPTZ` |
+| `categories` | `id` | `TEXT` |
+| `categories` | `nombre` | `TEXT` |
+| `categories` | `creado_por` | `TEXT` |
+| `categories` | `fecha` | `TEXT` |
+| `categories` | `created_at` | `TIMESTAMPTZ` |
+| `assignments` | `proyecto_id` | `TEXT` |
+| `assignments` | `email` | `TEXT` |
+| `assignments` | `rol` | `TEXT` |
+| `entries` | `id` | `TEXT` |
+| `entries` | `owner_email` | `TEXT` |
+| `entries` | `project_id` | `TEXT` |
+| `entries` | `tipo` | `TEXT` |
+| `entries` | `parent_id` | `TEXT` |
+| `entries` | `descripcion` | `TEXT` |
+| `entries` | `fecha_inicio` | `TEXT` |
+| `entries` | `fecha_fin` | `TEXT` |
+| `entries` | `estado` | `TEXT` |
+| `entries` | `alerta` | `TEXT` |
+| `entries` | `bloqueante` | `TEXT` |
+| `entries` | `categoria` | `TEXT` |
+| `entries` | `nota` | `TEXT` |
+| `entries` | `jira` | `TEXT` |
+| `entries` | `msd` | `TEXT` |
+| `entries` | `esp_tecnica` | `TEXT` |
+| `entries` | `esp_funcional` | `TEXT` |
+| `entries` | `evidencia` | `TEXT` |
+| `entries` | `sin_entregable` | `INTEGER` |
+| `entries` | `observaciones` | `TEXT` |
+| `entries` | `entregable` | `TEXT` |
+| `entries` | `interno` | `INTEGER` |
+| `entries` | `descripcion_tarea` | `TEXT` |
+| `entries` | `created_at` | `TIMESTAMPTZ` |
+| `entries` | `updated_at` | `TIMESTAMPTZ` |
+| `audit` | `id` | `BIGINT` |
+| `audit` | `timestamp` | `TEXT` |
+| `audit` | `usuario` | `TEXT` |
+| `audit` | `accion` | `TEXT` |
+| `audit` | `tipo` | `TEXT` |
+| `audit` | `id_registro` | `TEXT` |
+| `audit` | `detalle` | `TEXT` |
 
-#### `assignments`
-| Columna | Tipo | Restricción | Descripción |
+### Claves e índices
+
+| Tabla | PK | FK | Índices |
 | --- | --- | --- | --- |
-| `proyecto_id` | TEXT | PK, FK → `projects.id` ON DELETE CASCADE | Proyecto. |
-| `email` | TEXT | PK, NOCASE | Usuario asignado (pool de la vista abierta y contexto de Morgan). |
-| `rol` | TEXT | `Líder` \| `Colaborador`, DEFAULT `Colaborador` | Rol **en este proyecto**. Define edición global, vista `VISTA GLOBAL` y chat. |
+| `users` | `id` | — | `UNIQUE ASYNC (lower(username))`, `UNIQUE ASYNC (lower(email))` |
+| `sessions` | `token_hash` | `user_id → users.id` | — |
+| `projects` | `id` | — | — |
+| `categories` | `id` | — | — |
+| `assignments` | `(proyecto_id, email)` | `proyecto_id → projects.id` | `INDEX ASYNC (email)` |
+| `entries` | `id` | — | `INDEX ASYNC (owner_email, project_id)`, `INDEX ASYNC (parent_id)`, `INDEX ASYNC (project_id)` |
+| `audit` | `id` | — | — |
 
-#### `entries`
-Una fila por Tarea / Subtarea / Avance / Información general. Sustituye las hojas por usuario.
-
-| Columna BD | Columna hoja original | Tipo | Descripción |
-| --- | --- | --- | --- |
-| `id` | `ID` | TEXT PK | UUID. |
-| `owner_email` | (nombre de la hoja) | TEXT NOCASE | Dueño de la fila. |
-| `project_id` | `ID_Proyecto` | TEXT | Proyecto (sin FK para conservar el comportamiento legado). |
-| `tipo` | `Tipo` | TEXT | `Tarea` \| `Subtarea` \| `Avance` \| `General`. |
-| `parent_id` | `Parent_ID` | TEXT | Jerarquía Tarea → Subtarea → Avance. |
-| `descripcion` | `Descripcion` | TEXT | HTML de CKEditor. |
-| `fecha_inicio` | `Fecha Inicio` | TEXT | `YYYY-MM-DD`. |
-| `fecha_fin` | `Fecha Fin` | TEXT | `YYYY-MM-DD` o vacío. |
-| `estado` | `Estado` | TEXT | `No iniciado`, `En proceso`, `Detenido`, `Completado`, `Eliminada`. |
-| `alerta` | `Alerta` | TEXT | Solo se guarda en Avances `Detenido`. |
-| `bloqueante` | `Bloqueante` | TEXT | Solo se guarda en Avances `Detenido`. |
-| `categoria` | `Categoria` | TEXT | Nombre de categoría. |
-| `nota` | `Nota` | TEXT | HTML de la nota de la Tarea. |
-| `jira` | `Jira` | TEXT | Ticket. |
-| `msd` | `MSD` | TEXT | Ticket. |
-| `esp_tecnica` | `Especificacion Tecnica` | TEXT | HTML. |
-| `esp_funcional` | `Especificacion Funcional` | TEXT | HTML. |
-| `evidencia` | `Evidencia` | TEXT | URL o texto. |
-| `sin_entregable` | `Sin Entregable` | INTEGER | 0/1 (antes `No`/`Sí`). |
-| `observaciones` | `Observaciones` | TEXT | Historial de atrasos: `[YYYY-MM-DD]::texto`, separado por `homoplato`. |
-| `entregable` | `Entregable` | TEXT | URL o texto. |
-| `interno` | `Interno` | INTEGER | 0/1 (antes `No`/`Sí`). |
-| `descripcion_tarea` | `Descripcion_Tarea` | TEXT | Solo Tareas. |
-| `created_at` / `updated_at` | — | TEXT | datetime UTC. |
-
-Índices: `(owner_email, project_id)` y `(parent_id)`.
-
-#### `audit`
-| Columna | Tipo | Descripción |
-| --- | --- | --- |
-| `id` | INTEGER | PK. |
-| `timestamp` | TEXT | `YYYY-MM-DD HH:mm:ss` (Bogotá). |
-| `usuario` | TEXT | Email de quien ejecuta la acción. |
-| `accion` | TEXT | `CREAR`, `EDITAR`, `ELIMINAR`, `LOGIN`, `LOGIN_FALLIDO`, `LOGOUT`, `CONSULTAR`. |
-| `tipo` | TEXT | Entidad afectada. |
-| `id_registro` | TEXT | Id de la entidad. |
-| `detalle` | TEXT | Detalle libre. |
-
-Toda mutación de la app (configuración, entradas, notas, atrasos, login/logout y consultas a Morgan) genera una fila mediante `src/lib/audit.js`. Todavía no hay visualización de auditoría en la interfaz.
-
-### Correspondencia con las hojas antiguas
-
-| Hoja Apps Script | Tabla SQLite |
-| --- | --- |
-| `Usuarios` | `users` (+ `username`, `password_hash`) |
-| `Proyectos` | `projects` (sin estado ni columnas de cierre) |
-| `Categorias` | `categories` |
-| `Asignaciones` | `assignments` |
-| `Auditoria` | `audit` |
-| Hoja por correo (abiertos) | `entries` filtrando por `owner_email` |
-| Hojas de proyectos cerrados | **Eliminadas** |
-
-## Reglas conservadas
-
-- Normalización de estados: `Por Iniciar`→`No iniciado`, `En Pausa`/`Bloqueada`→`Detenido`, `Terminada`→`Completado`, resto→`En proceso`.
-- No se puede completar una Tarea/Subtarea con hijos sin completar o eliminados.
-- Todos los usuarios (incluido `Administrador`) ven en proyectos abiertos solo los proyectos donde tienen una asignación.
-- La asignación indica si el usuario actúa como `Líder` o `Colaborador` en ese proyecto. Un usuario puede ser líder de uno o varios proyectos y colaborador en otros; un proyecto puede tener varios líderes.
-- Editar registros ajenos, usar `VISTA GLOBAL` y consultar Morgan exigen rol `Líder` **en el proyecto activo** (no basta con el perfil `Administrador`).
-- El chat de Morgan usa un gobierno SQL (`src/lib/sqlGovernance.js`): recibe solo las tablas permitidas del proyecto, devuelve un `SELECT` con `:projectId`/`:hoy`, ese SQL se ejecuta en una conexión de solo lectura y sus filas se devuelven al modelo para redactar la respuesta. Nunca se envían estructuras de acceso, credenciales, perfiles globales ni bitácoras.
-
-## Verificación
-
-```bash
-npm run lint
-npm run build
-```
+Los defaults, `NOT NULL`, `CHECK`, el resto de relaciones y la definición completa de los índices están en `db/aurora-schema.sql`, que es la fuente gobernada de la estructura.

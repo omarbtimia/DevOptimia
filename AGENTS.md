@@ -1,10 +1,17 @@
 # AGENTS.md
 
 ## Project
-Next.js 16 (App Router) web app with a Node backend and local SQLite (`node:sqlite`). Google Sheets/Apps Script/`clasp` were removed; closed projects were removed entirely. Node >= 22.5 required. No test framework; verification is `npm run lint` + `npm run build` plus manual checks.
+Next.js 16 (App Router) web app with a Node backend and **Aurora DSQL as the only database**. Local development and Amplify use the same env vars and DB roles; there is no SQLite runtime fallback. Google Sheets/Apps Script/`clasp` were removed; closed projects were removed entirely. Node >= 22.5 required. No test framework; verification is `npm run lint` + `npm run build` plus manual checks.
 
 ## Commands
-`npm run dev`, `npm run build`, `npm start`, `npm run lint`, `npm run db:init` (creates `data/optimia.sqlite` and seeds `admin`/`admin`), `npm run env:check` (reports required env var names/status only, never values), `npm run ui:sync`.
+`npm run dev`, `npm run build`, `npm start`, `npm run lint`, `npm run env:check` (reports required env var names/status only, never values), `npm run db:init` (checks Aurora CRUD connection), `npm run db:init:aurora` (one-time admin provisioning), `npm run ui:sync`.
+
+## Database / environment
+- `src/lib/dsql.js` signs short-lived IAM tokens with `@aws-sdk/dsql-signer`; `pg` pools are cached by DB role. AWS credentials come from the standard chain (SSO/profile/IAM role), never static keys in `.env.local`.
+- `getDb()` returns a CRUD `PgAdapter` (`optimia_crud`); `getReadOnlyDb()` returns a read-only `PgAdapter` (`optimia_read`). Both are async and expose `get/all/run/exec`; `?` and `:named` params become `$1`, `$2`, …
+- `optimia_read` has `SELECT` only on `projects`, `categories`, `assignments`, `entries`. It must never read `users`, `sessions`, `audit` or run DDL/DML. The chat directory currently uses `getDb()` because it joins `users.nombre`; do not grant `users` to the read role.
+- `scripts/init-aurora.mjs` applies `db/aurora-schema.sql`, seeds `admin`/`admin`, creates/maps DB roles and grants permissions. It needs an identity with `dsql:DbConnectAdmin`. Run it once; do not put it in CI or Amplify builds.
+- CI validates env names with `npm run env:check` and builds only; it does not connect to Aurora. Amplify passes app vars to `.env.production`, runs `env:check`, and uses its Compute role at runtime.
 
 ## UI source of truth
 - `legacy/Home.html`, `legacy/Index.html`, `legacy/Config.html` are the visual source. `src/generated/{home,index,config}.{css,markup.js,client.js}` are generated copies rendered by `src/components/LegacyPage.jsx`. **Do not edit generated files**; edit `legacy/` then run `npm run ui:sync`.
@@ -21,9 +28,9 @@ Next.js 16 (App Router) web app with a Node backend and local SQLite (`node:sqli
 - Config write endpoints are Administrador-only. In `/abiertos`, everyone sees only assigned projects; editing others' entries, `VISTA GLOBAL` and Morgan require `Líder` in that project. See `src/lib/permissions.js`. Do not weaken these checks without reason.
 - Every mutation (config, entries, notes, delays, login/logout, chat queries) must write an `audit` row via `src/lib/audit.js`; no audit visualization is exposed in the UI yet.
 
-## Data model (`src/lib/db.js`)
-- Tables: `users`, `sessions`, `projects`, `categories`, `assignments`, `entries`, `audit`. Schema is created idempotently on first `getDb()`. README documents every column.
-- `users.role` stores `Administrador`/`Usuario`; `assignments.rol` stores `Líder`/`Colaborador`. `users.nombre` is the display name (backfilled from the email local part when missing). `getDb()` migrates older DBs (`Líder`→`Administrador`, `Colaborador`→`Usuario`, adds `assignments.rol`/`users.nombre` and backfills leaders from `projects.lider_email`).
+## Data model (`db/aurora-schema.sql`)
+- Tables: `users`, `sessions`, `projects`, `categories`, `assignments`, `entries`, `audit`. README documents every column.
+- `users.role` stores `Administrador`/`Usuario`; `assignments.rol` stores `Líder`/`Colaborador`. `users.nombre` is the display name (backfilled from the email local part when missing).
 - `projects.lider_email` is legacy compatibility only; derive leaders from `assignments` with `rol='Líder'`.
 - `entries` replaces the per-user sheets: one row per `Tarea`/`Subtarea`/`Avance`/`General`, keyed by `owner_email` + `project_id`. No closed-project tables/columns remain.
 - Exact state values matter: `No iniciado`, `En proceso`, `Detenido`, `Completado`, `Eliminada` (`normalizarEstado_` in `src/lib/utils.js`). A parent cannot be completed while children are open.
@@ -32,4 +39,4 @@ Next.js 16 (App Router) web app with a Node backend and local SQLite (`node:sqli
 
 ## Bedrock chat
 - `consultarChatLiderBedrock` is in `src/lib/chat.js`; it requires `Líder` in the assignment for `payload.projectId` (not the global profile). Token comes only from `AWS_BEARER_TOKEN_BEDROCK` in `.env.local`. Fallback model is used on HTTP 400/404. Never commit a token.
-- SQL governance lives in `src/lib/sqlGovernance.js`: Morgan first receives only allowed project tables/rules and returns one `SELECT` using `:projectId`/`:hoy`; `chat.js` validates it, executes it via `getReadOnlyDb()` and sends only the result rows back for the final answer. Never expose access tables, credentials, global profiles or audit logs to the model.
+- SQL governance lives in `src/lib/sqlGovernance.js`: Morgan first receives only allowed project tables/rules and returns one PostgreSQL `SELECT` using `:projectId`/`:hoy`; `chat.js` validates it, executes it via `getReadOnlyDb()` and sends only the result rows back for the final answer. Never expose access tables, credentials, global profiles or audit logs to the model.

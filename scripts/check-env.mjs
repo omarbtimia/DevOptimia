@@ -6,13 +6,23 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const archivos = ['.env', '.env.local', '.env.production'];
 
 const obligatorias = [
+  ['AURORA_DSQL_HOST', 'Endpoint del cluster Aurora DSQL'],
+  ['AURORA_DSQL_REGION', 'Región AWS del cluster'],
+  ['AURORA_DSQL_CRUD_USER', 'Rol DB de lectura/escritura'],
+  ['AURORA_DSQL_READ_USER', 'Rol DB de solo lectura'],
   ['GOOGLE_CLIENT_ID', 'Cliente OAuth 2.0 de Google'],
   ['GOOGLE_CLIENT_SECRET', 'Secreto OAuth 2.0 de Google'],
   ['GOOGLE_REDIRECT_URI', 'URI de retorno autorizada en Google'],
 ];
 
 const opcionales = [
-  ['SQLITE_PATH', 'Archivo SQLite (usa optimia.sqlite si falta)'],
+  ['AURORA_DSQL_DATABASE', 'Base DSQL (usa postgres si falta)'],
+  ['AURORA_DSQL_PORT', 'Puerto DSQL (usa 5432 si falta)'],
+  ['AURORA_DSQL_POOL_MAX', 'Tamaño del pool (usa 8 si falta)'],
+  ['AURORA_DSQL_TOKEN_EXPIRES_IN', 'Vigencia del token IAM'],
+  ['AURORA_DSQL_TOKEN_TTL', 'Renovación del token IAM'],
+  ['AURORA_DSQL_READ_IAM_ROLE_ARN', 'ARN IAM para db:init:aurora'],
+  ['AURORA_DSQL_CRUD_IAM_ROLE_ARN', 'ARN IAM para db:init:aurora'],
   ['AWS_BEARER_TOKEN_BEDROCK', 'Token del chat Morgan'],
 ];
 
@@ -70,13 +80,13 @@ for (const [nombre, descripcion] of obligatorias) {
   const valor = valorDe(nombre, archivosLeidos);
   const ok = informada(valor);
   if (!ok) faltan.push(nombre);
-  console.log(`[${ok ? 'OK' : 'FALTA'}] ${nombre.padEnd(26)} ${descripcion}`);
+  console.log(`[${ok ? 'OK' : 'FALTA'}] ${nombre.padEnd(32)} ${descripcion}`);
 }
 
 for (const [nombre, descripcion] of opcionales) {
   const valor = valorDe(nombre, archivosLeidos);
   const estado = informada(valor) ? 'OK' : 'OPCIONAL';
-  console.log(`[${estado}] ${nombre.padEnd(26)} ${descripcion}`);
+  console.log(`[${estado}] ${nombre.padEnd(32)} ${descripcion}`);
 }
 
 if (faltan.length) {

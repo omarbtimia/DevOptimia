@@ -14,13 +14,6 @@ function hostLimpio(value) {
   return String(value || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
 }
 
-export function usarAurora() {
-  const modo = String(process.env.DB_DRIVER || '').trim().toLowerCase();
-  if (modo === 'sqlite') return false;
-  if (modo === 'aurora' || modo === 'dsql') return true;
-  return Boolean(hostLimpio(process.env.AURORA_DSQL_HOST));
-}
-
 export function configDsql(tipo = 'crud') {
   const host = hostLimpio(process.env.AURORA_DSQL_HOST);
   if (!host) throw new Error('Falta AURORA_DSQL_HOST para usar Aurora DSQL.');
