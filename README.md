@@ -110,13 +110,15 @@ Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con b
    AWS_BEARER_TOKEN_BEDROCK=...
    ```
 
-2. Asigna a la app un **Compute role** de Amplify con permisos DSQL y mapéalo en la base a `optimia_crud` y `optimia_read`. Debe ser el mismo rol IAM usado en local.
+2. Asigna a la app un **Compute role** de Amplify con permiso `dsql:DbConnect` sobre el clúster y mapéalo en la base a `optimia_crud` y `optimia_read`. Este rol es para la app en ejecución; no le concedas permisos administrativos para migrar.
 
 3. En Google Cloud, registra exactamente la URI definida en `GOOGLE_REDIRECT_URI` como callback autorizado.
 
 4. Aprovisiona Aurora una vez fuera del pipeline, con la identidad `dsql:DbConnectAdmin` y los ARNs de los roles IAM. No incluyas `db:init:aurora` en el build de Amplify.
 
-5. Despliega. `amplify.yml` instala Node 22, ejecuta `npm ci`, copia las variables a `.env.production`, ejecuta `npm run env:check` y compila con `npm run build`.
+5. Configura el **Service role** del build como se describe en la sección siguiente. Es distinto del Compute role: que la app conecte no garantiza que el build tenga acceso.
+
+6. Despliega. `amplify.yml` instala Node 22, ejecuta `npm ci`, copia las variables de runtime a `.env.production`, ejecuta `npm run env:check` y compila con `npm run build`. Solo en `develop` y fuera de previews ejecuta después las migraciones, antes de publicar los artefactos.
 
 ## GitHub Actions
 
@@ -135,19 +137,40 @@ Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con b
 - Los índices `CREATE INDEX ASYNC` se esperan antes de continuar. Los errores temporales de concurrencia `40001/OC001` se reintentan automáticamente.
 - Cada sentencia se ejecuta por separado porque Aurora DSQL no permite varias DDL ni mezclar DDL con DML en una misma transacción.
 
-### Workflow `Aurora DB schema`
+### Migraciones en el despliegue de Amplify
 
-- Se dispara con push a `develop` o `main` cuando cambian `db/**`, los scripts de migración o las dependencias. También puede ejecutarse manualmente con `workflow_dispatch`.
-- Usa un solo cluster, sin separación por entornos.
-- Secrets requeridos: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AURORA_DSQL_HOST`, `AURORA_DSQL_CRUD_USER` y `AURORA_DSQL_READ_USER`. Configúralos en **Settings → Secrets and variables → Actions** del repositorio.
-- Secrets opcionales: `AURORA_DSQL_DATABASE`, `AURORA_DSQL_PORT`, `AURORA_DSQL_TOKEN_EXPIRES_IN` y `AURORA_DSQL_TOKEN_TTL`.
-- Usa las claves de GitHub Secrets directamente, sin OIDC ni `AWS_ROLE_TO_ASSUME`. Antes de configurar AWS valida la presencia de los tres secrets AWS; si falta alguno, falla indicando solo su nombre, nunca su valor.
-- `AWS_REGION` debe coincidir con la región del clúster de `AURORA_DSQL_HOST`; el workflow también la asigna a `AURORA_DSQL_REGION`. Esto solo cambia el workflow de migraciones: CI, desarrollo local y Amplify conservan su configuración regional y de autenticación; no agregues estas claves a `.env.local` ni a Amplify.
-- La identidad IAM de las claves necesita `dsql:DbConnectAdmin` para migraciones/grants y `dsql:DbConnect` para verificar la conexión CRUD, limitados al clúster de destino. Además, debe estar mapeada al rol DB configurado en `AURORA_DSQL_CRUD_USER` (por defecto `optimia_crud`) mediante el aprovisionamiento existente; las claves por sí solas no conceden acceso.
-- Usa una identidad IAM dedicada, nunca claves root; rota las claves y actualiza los secrets periódicamente. Este flujo usa claves de acceso de larga duración: las credenciales temporales requerirían además `AWS_SESSION_TOKEN`, que no está configurado aquí.
-- El workflow aplica migraciones, reaplica grants y verifica la conexión con el rol de lectura/escritura. No se ejecuta en el build de Amplify.
-- Requiere un clúster existente y el aprovisionamiento inicial descrito arriba; no crea el clúster ni ejecuta `db:init:aurora`.
-- Las migraciones destructivas están bloqueadas. Para permitirlas, la migración debe incluir `-- @destructive` y el workflow debe ejecutarse manualmente con `allow_destructive=true`.
+- Solo se ejecutan cuando `AWS_BRANCH` es exactamente `develop` y `AWS_PULL_REQUEST_ID` está vacío. `main`, las demás ramas y los previews compilan sin ejecutar los comandos de base de datos.
+- Después de compilar y antes de publicar se ejecutan, en orden: `npm run db:migrate:status`, `npm run db:migrate`, `npm run db:grant` y `npm run db:init`. Cualquier fallo detiene el despliegue; la verificación CRUD cierra su conexión al terminar.
+- Se requiere un clúster ya aprovisionado. Las tablas nuevas deben entregarse como migraciones versionadas: no se crea el clúster, no se reaplica el baseline ni se ejecuta `db:init:aurora` durante el deploy.
+- Amplify fuerza `AURORA_ALLOW_DESTRUCTIVE=0`, incluso si existe otra configuración en el entorno. Las operaciones destructivas requieren el marcador `-- @destructive` y una ejecución administrativa independiente y controlada con `AURORA_ALLOW_DESTRUCTIVE=1`.
+- El workflow de migraciones de GitHub se retiró; el workflow CI permanece sin conexiones a Aurora. Estos despliegues no necesitan `AWS_ROLE_TO_ASSUME`, `AWS_ACCESS_KEY_ID` ni `AWS_SECRET_ACCESS_KEY` en GitHub Secrets.
+
+En **Amplify → App settings → IAM roles → Service role**, asigna un rol de despliegue autorizado para acceder al clúster. Usa las credenciales temporales que proporciona AWS mediante la cadena estándar, sin agregar claves estáticas a las variables de Amplify, `.env.local` o `.env.production`. El Service role necesita una política como esta, reemplazando los marcadores por el ARN real del clúster:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["dsql:DbConnectAdmin", "dsql:DbConnect"],
+      "Resource": "arn:aws:dsql:REGION:ACCOUNT_ID:cluster/CLUSTER_ID"
+    }
+  ]
+}
+```
+
+`dsql:DbConnectAdmin` permite conectar como `admin` para migraciones y grants. Para la comprobación CRUD, una identidad administrativa debe mapear además el **ARN IAM del Service role**, no el ARN STS de una sesión, al rol configurado en `AURORA_DSQL_CRUD_USER`:
+
+```sql
+AWS IAM GRANT optimia_crud TO 'arn:aws:iam::ACCOUNT_ID:role/AMPLIFY_SERVICE_ROLE';
+```
+
+Sustituye `optimia_crud` si usas otro nombre de rol DB. No hace falta mapear el Service role al rol de lectura ni conceder administración al Compute role. Configura estos permisos y el mapeo fuera del pipeline antes del primer despliegue; confirma que el build puede obtener las credenciales del Service role y alcanzar el endpoint. Mover el proceso a Amplify no corrige por sí solo un `access denied`. `AURORA_DSQL_REGION` debe corresponder al endpoint de `AURORA_DSQL_HOST`, aunque Amplify esté en otra región.
+
+Antes de activar el flujo, detén ejecuciones anteriores del workflow GitHub e impide builds `develop` simultáneos. El runner no tiene bloqueo distribuido: los reintentos de concurrencia y checksums no serializan migraciones. Si no puedes garantizar un solo ejecutor, no habilites las migraciones automáticas hasta contar con un mecanismo de bloqueo.
+
+`develop` y `main` comparten clúster; las migraciones deben ser compatibles con las versiones activas de ambas ramas. Compilar primero reduce cambios cuando el código no compila, pero las DDL pueden quedar aplicadas parcialmente y un fallo posterior de publicación no revierte la base.
 
 ## Comandos
 
