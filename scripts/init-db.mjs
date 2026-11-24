@@ -1,4 +1,4 @@
-import { getDb } from '../src/lib/db.js';
+import { initDb } from '../src/lib/db.js';
 
-getDb();
-console.log('Base de datos SQLite lista.');
+await initDb();
+console.log('Conexión Aurora DSQL verificada.');
