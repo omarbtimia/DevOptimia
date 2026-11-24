@@ -139,10 +139,14 @@ Migración de la app Apps Script a una aplicación Next.js 16 (App Router) con b
 
 - Se dispara con push a `develop` o `main` cuando cambian `db/**`, los scripts de migración o las dependencias. También puede ejecutarse manualmente con `workflow_dispatch`.
 - Usa un solo cluster, sin separación por entornos.
-- Secrets requeridos: `AURORA_DSQL_HOST`, `AURORA_DSQL_REGION`, `AURORA_DSQL_CRUD_USER`, `AURORA_DSQL_READ_USER` y `AWS_ROLE_TO_ASSUME`.
+- Secrets requeridos: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AURORA_DSQL_HOST`, `AURORA_DSQL_CRUD_USER` y `AURORA_DSQL_READ_USER`. Configúralos en **Settings → Secrets and variables → Actions** del repositorio.
 - Secrets opcionales: `AURORA_DSQL_DATABASE`, `AURORA_DSQL_PORT`, `AURORA_DSQL_TOKEN_EXPIRES_IN` y `AURORA_DSQL_TOKEN_TTL`.
-- `AWS_ROLE_TO_ASSUME` debe ser un rol IAM asumible por OIDC con permiso `dsql:DbConnectAdmin`. No se usan claves AWS estáticas.
+- Usa las claves de GitHub Secrets directamente, sin OIDC ni `AWS_ROLE_TO_ASSUME`. Antes de configurar AWS valida la presencia de los tres secrets AWS; si falta alguno, falla indicando solo su nombre, nunca su valor.
+- `AWS_REGION` debe coincidir con la región del clúster de `AURORA_DSQL_HOST`; el workflow también la asigna a `AURORA_DSQL_REGION`. Esto solo cambia el workflow de migraciones: CI, desarrollo local y Amplify conservan su configuración regional y de autenticación; no agregues estas claves a `.env.local` ni a Amplify.
+- La identidad IAM de las claves necesita `dsql:DbConnectAdmin` para migraciones/grants y `dsql:DbConnect` para verificar la conexión CRUD, limitados al clúster de destino. Además, debe estar mapeada al rol DB configurado en `AURORA_DSQL_CRUD_USER` (por defecto `optimia_crud`) mediante el aprovisionamiento existente; las claves por sí solas no conceden acceso.
+- Usa una identidad IAM dedicada, nunca claves root; rota las claves y actualiza los secrets periódicamente. Este flujo usa claves de acceso de larga duración: las credenciales temporales requerirían además `AWS_SESSION_TOKEN`, que no está configurado aquí.
 - El workflow aplica migraciones, reaplica grants y verifica la conexión con el rol de lectura/escritura. No se ejecuta en el build de Amplify.
+- Requiere un clúster existente y el aprovisionamiento inicial descrito arriba; no crea el clúster ni ejecuta `db:init:aurora`.
 - Las migraciones destructivas están bloqueadas. Para permitirlas, la migración debe incluir `-- @destructive` y el workflow debe ejecutarse manualmente con `allow_destructive=true`.
 
 ## Comandos
